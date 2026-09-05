@@ -998,9 +998,12 @@
   async function fetchAlpha(subset) {
     var positions = subset && subset.length ? subset : allPositions();
     if (budgetLeft() < positions.length) {
-      error = 'Only ' + budgetLeft() + ' calls left today and this needs ' + positions.length
-        + '. The free allowance resets tomorrow \u2014 use the search fallback in the meantime.';
-      render(); return;
+      var ok = window.confirm(
+        'This device counts ' + budgetLeft() + ' lookups left and you are asking for ' + positions.length + '.\n\n'
+        + 'That tally is only a guess. It does not know about key changes, and it syncs between your devices, '
+        + 'so it over-counts when they use different keys or connections. Alpha Vantage keeps the real count.\n\n'
+        + 'Try anyway?');
+      if (!ok) return;
     }
 
     busy = true; error = null; state.pending = null; cancelled = false; render();
@@ -1722,7 +1725,9 @@
     });
     root.querySelectorAll('[data-savekey]').forEach(function (el) {
       el.onclick = function () {
-        state.avKey = txt('avk');
+        var newKey = txt('avk');
+        if (newKey !== state.avKey) state.avUsage = { date: '', n: 0 };
+        state.avKey = newKey;
         var a = txt('n-a'), b = txt('n-b');
         if (a) state.books.screened.name = a;
         if (b) state.books.defence.name = b;
