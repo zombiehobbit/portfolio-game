@@ -1,7 +1,8 @@
 /* Bump VERSION on every deploy — any change to the string triggers the update banner.
    Patch for fixes, minor for features. v1.1 = first-run chooser. v1.2 = key instructions. v1.3 = backup and restore. v1.4 = cross-device sync. v1.5 = generated sync codes. v1.6 = choose what to refresh. v1.7 = shared-connection warning. v1.8 = movers view. v1.9 = fix joining device overwriting the server.
-   v1.10 = manual price entry and per-holding price history. */
-const VERSION = 'v1.10';
+   v1.10 = manual price entry and per-holding price history.
+   v1.11 = pending prices survive a reload. */
+const VERSION = 'v1.11';
 const CACHE = 'portfolios-' + VERSION;
 
 const SHELL = [

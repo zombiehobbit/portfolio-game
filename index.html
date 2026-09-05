@@ -225,7 +225,7 @@
       location.reload();
     });
   }
-  var pending = null;   // { TICKER: price } awaiting review
+  // pending prices live in state, not memory, so a reload never discards a paid-for fetch
   var fetchNote = null;
 
   function seed() {
@@ -238,6 +238,7 @@
       syncCode: '',
       updated: 0,
       avUsage: { date: '', n: 0 },
+      pending: null,
       books: {
         screened: {
           name: 'Screened', color: 'var(--pine)', cash: 0,
@@ -388,7 +389,7 @@
 
     html += race(s, d);
     html += priceBar();
-    if (pending) html += reviewPanel();
+    if (state.pending) html += reviewPanel();
     html += chart();
 
     html += '<div class="tabs" role="tablist">';
@@ -1002,7 +1003,7 @@
       render(); return;
     }
 
-    busy = true; error = null; pending = null; cancelled = false; render();
+    busy = true; error = null; state.pending = null; cancelled = false; render();
 
     var closes = {};   // symbol -> { date: close }
     var got = 0, dead = [];
@@ -1059,7 +1060,7 @@
         var v = m[days[days.length - 1]];
         if (isFinite(v) && v > 0) { clean[p.ticker] = v; n++; }
       });
-      if (n) pending = clean;
+      if (n) { state.pending = clean; save(); }
 
       if (positions.length === allPositions().length) buildPriorFromCloses(closes, positions);
 
@@ -1128,7 +1129,7 @@
   }
 
   async function fetchPrices() {
-    busy = true; fetchNote = null; error = null; pending = null; render();
+    busy = true; fetchNote = null; error = null; state.pending = null; render();
 
     var groups = chunk(allPositions(), 3);
     var found = {}, failed = 0;
@@ -1155,7 +1156,8 @@
     });
 
     if (n) {
-      pending = clean;
+      state.pending = clean;
+      save();
       fetchNote = 'Found ' + n + ' of ' + allPositions().length + '. Check them before accepting.';
     } else {
       fetchNote = null;
@@ -1169,9 +1171,9 @@
 
   function reviewPanel() {
     var h = '<div class="review">';
-    h += '<div class="review-head">These came from a web search, not a market feed. They may be delayed, and gold trades in dollars so check that one. Edit anything that looks wrong after accepting.</div>';
+    h += '<div class="review-head"><strong>Nothing is applied until you accept.</strong> These came from a web search, not a market feed. They may be delayed, and gold trades in dollars so check that one. Edit anything that looks wrong after accepting.</div>';
     allPositions().forEach(function (p) {
-      var np = pending[p.ticker];
+      var np = state.pending[p.ticker];
       if (np == null) return;
       var move = p.now ? ((np - p.now) / p.now * 100) : null;
       h += '<div class="review-row"><span>' + esc(p.name) + '</span>'
@@ -1187,13 +1189,13 @@
 
   function acceptPrices() {
     allPositions().forEach(function (p) {
-      var np = pending[p.ticker];
+      var np = state.pending[p.ticker];
       if (np == null) return;
       if (!p.entry) p.entry = np;
       p.now = np;
       p.at = today();
     });
-    pending = null;
+    state.pending = null;
     snapshot();
     fetchNote = 'Prices updated and banked.';
     save(); render();
@@ -1755,7 +1757,7 @@
       el.onclick = acceptPrices;
     });
     root.querySelectorAll('[data-discard]').forEach(function (el) {
-      el.onclick = function () { pending = null; fetchNote = null; render(); };
+      el.onclick = function () { state.pending = null; fetchNote = null; save(); render(); };
     });
   }
 
