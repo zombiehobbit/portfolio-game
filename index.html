@@ -326,6 +326,7 @@
 
   async function save() {
     try {
+      if (state.syncCode && !syncing) state.updated = Date.now();
       await store.set(KEY, JSON.stringify(state));
       error = null;
       if (state.syncCode) pushState();
@@ -775,6 +776,10 @@
                   + 'and write that slot, and people pick guessable phrases. Twenty random characters '
                   + 'would take around eight hundred times the age of the universe to work through '
                   + 'at a billion attempts a second.')
+          + (state.updated
+              ? '<br>Last change ' + new Date(state.updated).toLocaleString('en-GB',
+                  { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) + '.'
+              : '')
           + (syncNote ? '<br>' + esc(syncNote) : '') + '</p>';
         h += '</div>';
       }
@@ -912,7 +917,7 @@
 
   async function pushState() {
     if (!state.syncCode || syncing) return;
-    state.updated = Date.now();
+    if (!state.updated) state.updated = Date.now();
     try {
       var res = await fetch(syncUrl(), {
         method: 'PUT',
