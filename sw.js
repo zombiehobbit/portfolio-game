@@ -6,8 +6,9 @@
    v1.13 = refresh always confirms what it will spend.
    v1.14 = fix sync timestamp written after the local save.
    v1.15 = per-holding descriptions.
-   v1.16 = ranked movers with charts, and a choice of opening tab. */
-const VERSION = 'v1.16';
+   v1.16 = ranked movers with charts, and a choice of opening tab.
+   v1.17 = fix blank tab area on load. */
+const VERSION = 'v1.17';
 const CACHE = 'portfolios-' + VERSION;
 
 const SHELL = [

@@ -320,6 +320,9 @@
     if (typeof state.avKey !== 'string') state.avKey = '';
     if (typeof state.syncCode !== 'string') state.syncCode = '';
     if (!state.avUsage) state.avUsage = { date: '', n: 0 };
+    if (!state.pending) state.pending = null;
+    if (state.startTab !== 'movers') state.startTab = 'books';
+    if (!view) view = state.startTab;
     if (!inClaude() && !state.avKey) {
       fetchNote = 'Add an Alpha Vantage key in Settings to fetch prices.';
     }
@@ -368,6 +371,7 @@
   /* ---------- render ---------- */
 
   function render() {
+    if (!view) view = (state && state.startTab) || 'books';
     var s = bookValue(state.books.screened);
     var d = bookValue(state.books.defence);
 
