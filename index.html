@@ -143,6 +143,16 @@
   .review-move { font-variant-numeric: tabular-nums; font-family: var(--serif); }
   .review-foot { padding: 12px 14px; display: flex; gap: 8px; }
 
+  .mv { background: var(--surface); border: 1px solid var(--rule); padding: 11px 14px; border-bottom: none; }
+  .mv:last-of-type { border-bottom: 1px solid var(--rule); }
+  .mv-top { display: flex; align-items: baseline; gap: 8px; }
+  .mv-name { flex: 1; min-width: 0; font-size: 14px; overflow-wrap: anywhere; }
+  .mv-pct { font-family: var(--serif); font-size: 15px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .mv-sub { font-size: 11px; color: var(--muted); margin-top: 2px; font-variant-numeric: tabular-nums; }
+  .mv-bar { height: 3px; margin-top: 7px; background: var(--rule); position: relative; }
+  .mv-fill { position: absolute; top: 0; height: 3px; }
+  .mv-head { font-size: 12px; color: var(--muted); padding: 0 0 8px; line-height: 1.5; }
+
   .chart { background: var(--surface); border: 1px solid var(--rule); padding: 14px; margin-bottom: 16px; }
   .chart svg { display: block; width: 100%; height: 130px; }
   .chart-cap { font-size: 12px; color: var(--muted); margin-top: 8px; line-height: 1.45; }
@@ -178,7 +188,9 @@
   var showBackup = false;
   var remoteNewer = null;   // timestamp on the server
   var syncNote = null;
-  var joining = false;   // pasting an existing code rather than making one
+  var joining = false;
+  var showPick = false;
+  var picked = {};   // pasting an existing code rather than making one
   var updateReady = false;
   var waitingWorker = null;
   var running = null;
@@ -379,11 +391,13 @@
 
     html += '<div class="tabs" role="tablist">';
     html += tab('books', 'Holdings');
+    html += tab('movers', 'Movers');
     html += tab('trades', 'Trades');
     html += tab('diary', 'Diary');
     html += '</div>';
 
     if (view === 'books') html += renderBook('screened') + renderBook('defence');
+    if (view === 'movers') html += renderMovers();
     if (view === 'trades') html += renderTrades();
     if (view === 'diary') html += renderDiary();
 
@@ -542,6 +556,61 @@
     return h;
   }
 
+  function renderMovers() {
+    var rows = [];
+    ['screened', 'defence'].forEach(function (k) {
+      state.books[k].positions.forEach(function (p) {
+        if (!p.entry || !p.now) return;
+        var val = posValue(p);
+        rows.push({
+          name: p.name, ticker: p.ticker, book: k, colour: state.books[k].color,
+          pct: (p.now - p.entry) / p.entry * 100,
+          gain: val - p.cost, cost: p.cost
+        });
+      });
+    });
+
+    if (!rows.length) {
+      return '<div class="empty">Nothing priced yet.<br>'
+        + 'Once prices are in, this ranks every holding by how it has moved and by what it has '
+        + 'actually contributed in pounds \u2014 which are rarely the same story.</div>';
+    }
+
+    rows.sort(function (a, b) { return b.pct - a.pct; });
+    var widest = Math.max.apply(null, rows.map(function (r) { return Math.abs(r.pct); })) || 1;
+
+    var best = rows[0], worst = rows[rows.length - 1];
+    var byGain = rows.slice().sort(function (a, b) { return b.gain - a.gain; });
+    var driver = byGain[0], drag = byGain[byGain.length - 1];
+
+    var h = '<div class="mv-head">';
+    h += esc(best.name) + ' leads at ' + pct(best.pct) + ', ' + esc(worst.name)
+      + ' trails at ' + pct(worst.pct) + '.';
+    if (driver.name !== best.name || drag.name !== worst.name) {
+      h += ' In pounds though it is ' + esc(driver.name) + ' carrying it ('
+        + (driver.gain >= 0 ? '+' : '') + money(driver.gain).replace('\u00a3-', '-\u00a3')
+        + ') and ' + esc(drag.name) + ' costing most.';
+    }
+    h += '</div>';
+
+    rows.forEach(function (r) {
+      var w = Math.abs(r.pct) / widest * 50;
+      var left = r.pct >= 0 ? 50 : 50 - w;
+      h += '<div class="mv">';
+      h += '<div class="mv-top"><span class="mv-name">' + esc(r.name) + '</span>'
+        + '<span class="mv-pct ' + cls(r.pct) + '">' + pct(r.pct) + '</span></div>';
+      h += '<div class="mv-sub" style="color:' + r.colour + '">' + esc(state.books[r.book].name)
+        + '<span style="color:var(--muted)"> \u00b7 ' + esc(r.ticker) + ' \u00b7 '
+        + money(r.cost) + ' in \u00b7 ' + (r.gain >= 0 ? '+' : '\u2212') + money(Math.abs(r.gain))
+        + '</span></div>';
+      h += '<div class="mv-bar"><div class="mv-fill" style="left:' + left + '%;width:'
+        + w + '%;background:' + r.colour + '"></div></div>';
+      h += '</div>';
+    });
+
+    return h;
+  }
+
   function renderTrades() {
     if (!state.trades.length) {
       return '<div class="empty">No trades yet.<br>Every buy and sell lands here with the reason attached, so you can see later which calls were judgement and which were luck.</div>';
@@ -602,6 +671,7 @@
     if (state.avKey) {
       h += '<button class="act" data-alpha="1"' + (busy ? ' disabled' : '') + '>'
          + (busy ? 'Working\u2026' : 'Refresh data') + '</button>';
+      h += '<button class="act ghost" data-pick="1"' + (busy ? ' disabled' : '') + '>Choose some</button>';
     }
     if (inClaude()) {
       h += '<button class="act' + (state.avKey ? ' ghost' : '') + '" data-fetch="1"' + (busy ? ' disabled' : '') + '>'
@@ -677,13 +747,51 @@
         + 'No key yet? Get a free one at <a href="https://www.alphavantage.co/support/#api-key" '
         + 'target="_blank" rel="noopener">alphavantage.co</a> \u2014 enter an email and a one-line '
         + 'description, and it appears on the page straight away. No card needed.'
-        + '<br><br>It allows 25 lookups a day and one full refresh uses one per holding, so everyone '
-        + 'playing needs their own key rather than sharing.'
+        + '<br><br>It allows 25 lookups a day and one full refresh uses one per holding.'
+        + '<br><br>Worth knowing: the daily limit follows your internet connection as well as the key, '
+        + 'so everyone on the same wifi shares one allowance. A new key will not reset it. If two of you '
+        + 'are playing from the same house, refresh on different days.'
         + '<br><br>Your key stays on this device and is never sent anywhere except Alpha Vantage. '
         + 'Clearing empties both portfolios to \u00a3500 cash each so you can pick your own \u2014 it can\u2019t be undone.'
         + (running ? '<br><br>Running version ' + esc(running) + '.' : '') + '</p>';
       h += '</div>';
     }
+    if (showPick) {
+      h += '<div style="flex:1 1 100%">';
+      h += '<p class="hint" style="margin:10px 0 8px">Each one costs a call. '
+        + budgetLeft() + ' left by this device\u2019s count \u2014 which can read high, because the '
+        + 'allowance is shared across everything on your connection.</p>';
+      h += '<div class="btn-row" style="margin-bottom:8px">'
+        + '<button class="act ghost" data-sel="all">All</button>'
+        + '<button class="act ghost" data-sel="missing">Missing only</button>'
+        + '<button class="act ghost" data-sel="stale">Not today</button>'
+        + '<button class="act ghost" data-sel="none">None</button></div>';
+      ['screened', 'defence'].forEach(function (k) {
+        var b = state.books[k];
+        if (!b.positions.length) return;
+        h += '<div style="font-size:12px;color:' + b.color + ';margin:10px 0 4px">' + esc(b.name) + '</div>';
+        b.positions.forEach(function (p) {
+          var status = !p.now ? 'no price'
+            : p.at === today() ? 'today'
+            : p.at ? niceDate(p.at) : 'undated';
+          h += '<label style="display:flex;gap:9px;align-items:baseline;padding:6px 0;font-size:14px">'
+            + '<input type="checkbox" data-tick="' + p.id + '" style="width:auto;flex:0 0 auto"'
+            + (picked[p.id] ? ' checked' : '') + '>'
+            + '<span style="flex:1;min-width:0">' + esc(p.name) + '</span>'
+            + '<span style="font-size:11px;color:var(--muted);white-space:nowrap">' + status + '</span>'
+            + '</label>';
+        });
+      });
+      var n = allPositions().filter(function (p) { return picked[p.id]; }).length;
+      h += '<div class="btn-row" style="margin-top:10px">'
+        + '<button class="act" data-refreshsel="1"' + (n ? '' : ' disabled') + '>'
+        + (n ? 'Refresh these ' + n : 'Nothing chosen') + '</button>'
+        + '<button class="act ghost" data-nopick="1">Close</button></div>';
+      h += '<p class="hint" style="margin-top:10px">A partial run leaves the 30-day chart alone, '
+        + 'since rebuilding it needs every holding.</p>';
+      h += '</div>';
+    }
+
     if (showExport) {
       h += '<div style="flex:1 1 100%"><div class="field" style="margin:8px 0 0">'
         + '<label for="snap">Snapshot to paste into the chat</label>'
@@ -836,8 +944,8 @@
 
   function sleep(ms) { return new Promise(function (r) { setTimeout(r, ms); }); }
 
-  async function fetchAlpha() {
-    var positions = allPositions();
+  async function fetchAlpha(subset) {
+    var positions = subset && subset.length ? subset : allPositions();
     if (budgetLeft() < positions.length) {
       error = 'Only ' + budgetLeft() + ' calls left today and this needs ' + positions.length
         + '. The free allowance resets tomorrow \u2014 use the search fallback in the meantime.';
@@ -863,7 +971,14 @@
         spend(1);
 
         if (j['Note'] || j['Information']) {
-          error = 'Alpha Vantage stopped us: ' + (j['Note'] || j['Information']);
+          var msg = String(j['Note'] || j['Information']);
+          if (/rate limit|requests per day|premium/i.test(msg)) {
+            error = 'Out of lookups for today. The limit follows your connection as well as your key, '
+              + 'so a new key will not help and neither will anyone else in the house refreshing. '
+              + 'It resets tomorrow. Prices can be typed in by hand in the meantime.';
+          } else {
+            error = 'Alpha Vantage stopped us: ' + msg;
+          }
           break;
         }
         var ts = j['Time Series (Daily)'];
@@ -894,7 +1009,7 @@
       });
       if (n) pending = clean;
 
-      buildPriorFromCloses(closes, positions);
+      if (positions.length === allPositions().length) buildPriorFromCloses(closes, positions);
 
       fetchNote = 'Got ' + got + ' of ' + positions.length + '.'
         + (dead.length ? ' No data for ' + dead.join(', ') + ' \u2014 try editing their symbols.' : '')
@@ -1024,6 +1139,7 @@
       if (np == null) return;
       if (!p.entry) p.entry = np;
       p.now = np;
+      p.at = today();
     });
     pending = null;
     snapshot();
@@ -1347,6 +1463,7 @@
         var now = num('n-' + f.pos.id);
         f.pos.entry = entry;
         f.pos.now = now != null ? now : entry;
+        f.pos.at = today();
         f.pos.sym = txt('s-' + f.pos.id);
         openPos = null;
         snapshot();
@@ -1453,6 +1570,36 @@
     });
     root.querySelectorAll('[data-alpha]').forEach(function (el) {
       el.onclick = function () { if (!busy) fetchAlpha(); };
+    });
+    root.querySelectorAll('[data-pick]').forEach(function (el) {
+      el.onclick = function () { showPick = !showPick; showKey = false; showExport = false; render(); };
+    });
+    root.querySelectorAll('[data-nopick]').forEach(function (el) {
+      el.onclick = function () { showPick = false; render(); };
+    });
+    root.querySelectorAll('[data-tick]').forEach(function (el) {
+      el.onchange = function () { picked[el.dataset.tick] = el.checked; render(); };
+    });
+    root.querySelectorAll('[data-sel]').forEach(function (el) {
+      el.onclick = function () {
+        var mode = el.dataset.sel;
+        picked = {};
+        allPositions().forEach(function (p) {
+          if (mode === 'all') picked[p.id] = true;
+          else if (mode === 'missing') picked[p.id] = !p.now;
+          else if (mode === 'stale') picked[p.id] = p.at !== today();
+        });
+        render();
+      };
+    });
+    root.querySelectorAll('[data-refreshsel]').forEach(function (el) {
+      el.onclick = function () {
+        if (busy) return;
+        var subset = allPositions().filter(function (p) { return picked[p.id]; });
+        if (!subset.length) return;
+        showPick = false;
+        fetchAlpha(subset);
+      };
     });
     root.querySelectorAll('[data-export]').forEach(function (el) {
       el.onclick = function () { showExport = !showExport; showKey = false; render(); };
