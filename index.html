@@ -157,6 +157,8 @@
 
   .chart { background: var(--surface); border: 1px solid var(--rule); padding: 14px; margin-bottom: 16px; }
   .chart svg { display: block; width: 100%; height: 130px; }
+  .chart-tag { position: absolute; left: 0; font-size: 11px; line-height: 16px; background: var(--surface);
+    padding: 0 4px 0 0; z-index: 2; white-space: nowrap; pointer-events: none; }
   .chart-cap { font-size: 12px; color: var(--muted); margin-top: 8px; line-height: 1.45; }
 
   .pos-main { flex: 1 1 auto; min-width: 0; }
@@ -1484,7 +1486,24 @@
     var split = prior.length ? prior.length - 1 : 0;
     var baseY = H - ((500 - lo) / (hi - lo)) * H;
 
-    var h = '<div class="chart"><svg viewBox="0 0 ' + W + ' ' + H + '" preserveAspectRatio="none" role="img" '
+    // labels sit at the left end, where the two lines are apart; the right end
+    // always converges on the start value because the series is rebased there
+    function labelTop(v) {
+      var t = (1 - (v - lo) / (hi - lo)) * 130;
+      return Math.max(0, Math.min(116, t - 8));
+    }
+    var tS = labelTop(all[0].s), tD = labelTop(all[0].d);
+    if (Math.abs(tS - tD) < 16) {
+      if (tS <= tD) { tS = Math.max(0, tS - 8); tD = Math.min(116, tD + 8); }
+      else { tD = Math.max(0, tD - 8); tS = Math.min(116, tS + 8); }
+    }
+
+    var h = '<div class="chart"><div style="position:relative">';
+    h += '<span class="chart-tag" style="top:' + tS.toFixed(0) + 'px;color:var(--pine)">'
+      + esc(state.books.screened.name) + '</span>';
+    h += '<span class="chart-tag" style="top:' + tD.toFixed(0) + 'px;color:var(--brass)">'
+      + esc(state.books.defence.name) + '</span>';
+    h += '<svg viewBox="0 0 ' + W + ' ' + H + '" preserveAspectRatio="none" role="img" '
       + 'aria-label="Both portfolios plotted over time against the 500 pound start line">';
     if (baseY > 0 && baseY < H) {
       h += '<line x1="0" y1="' + baseY.toFixed(1) + '" x2="' + W + '" y2="' + baseY.toFixed(1)
@@ -1503,7 +1522,7 @@
       h += seg('s', split, all.length - 1, 'var(--pine)', false);
       h += seg('d', split, all.length - 1, 'var(--brass)', false);
     }
-    h += '</svg>';
+    h += '</svg></div>';
 
     var cap = niceDate(all[0].date) + ' to ' + niceDate(all[all.length - 1].date)
       + ' \u00B7 dashed line is the \u00A3500 start';

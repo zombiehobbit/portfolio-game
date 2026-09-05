@@ -8,8 +8,9 @@
    v1.15 = per-holding descriptions.
    v1.16 = ranked movers with charts, and a choice of opening tab.
    v1.17 = fix blank tab area on load.
-   v1.18 = read-only view codes and a Rivals tab. */
-const VERSION = 'v1.18';
+   v1.18 = read-only view codes and a Rivals tab.
+   v1.19 = label the lines on the chart. */
+const VERSION = 'v1.19';
 const CACHE = 'portfolios-' + VERSION;
 
 const SHELL = [
