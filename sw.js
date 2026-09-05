@@ -5,8 +5,9 @@
    v1.12 = call tally advises rather than blocks.
    v1.13 = refresh always confirms what it will spend.
    v1.14 = fix sync timestamp written after the local save.
-   v1.15 = per-holding descriptions. */
-const VERSION = 'v1.15';
+   v1.15 = per-holding descriptions.
+   v1.16 = ranked movers with charts, and a choice of opening tab. */
+const VERSION = 'v1.16';
 const CACHE = 'portfolios-' + VERSION;
 
 const SHELL = [

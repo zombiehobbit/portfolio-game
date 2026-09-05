@@ -147,6 +147,7 @@
   .mv { background: var(--surface); border: 1px solid var(--rule); padding: 11px 14px; border-bottom: none; }
   .mv:last-of-type { border-bottom: 1px solid var(--rule); }
   .mv-top { display: flex; align-items: baseline; gap: 8px; }
+  .mv-rank { font-family: var(--serif); font-size: 13px; color: var(--muted); width: 20px; flex: 0 0 20px; font-variant-numeric: tabular-nums; }
   .mv-name { flex: 1; min-width: 0; font-size: 14px; overflow-wrap: anywhere; }
   .mv-pct { font-family: var(--serif); font-size: 15px; font-variant-numeric: tabular-nums; white-space: nowrap; }
   .mv-sub { font-size: 11px; color: var(--muted); margin-top: 2px; font-variant-numeric: tabular-nums; }
@@ -174,7 +175,7 @@
   var KEY = 'wargame-v1';
   var root = document.getElementById('root');
   var state = null;
-  var view = 'books';
+  var view = null;
   var openPos = null;   // "book:id"
   var adding = null;    // book key
   var error = null;
@@ -240,6 +241,7 @@
       updated: 0,
       avUsage: { date: '', n: 0 },
       pending: null,
+      startTab: 'books',
       books: {
         screened: {
           name: 'Screened', color: 'var(--pine)', cash: 0,
@@ -550,6 +552,21 @@
     return out;
   }
 
+  function miniSpark(ser, colour) {
+    if (!ser || ser.length < 2) return '';
+    var vals = ser.map(function (x) { return x.c; });
+    var lo = Math.min.apply(null, vals), hi = Math.max.apply(null, vals);
+    var span = (hi - lo) || 1;
+    var W = 300, H = 26;
+    var pts = ser.map(function (x, i) {
+      return ((i / (ser.length - 1)) * W).toFixed(1) + ',' + (H - ((x.c - lo) / span) * H).toFixed(1);
+    }).join(' ');
+    return '<svg viewBox="0 0 ' + W + ' ' + H + '" preserveAspectRatio="none" aria-hidden="true" '
+      + 'style="display:block;width:100%;height:26px;margin-top:8px">'
+      + '<polyline points="' + pts + '" fill="none" stroke="' + colour + '" stroke-width="1.5" '
+      + 'stroke-linejoin="round" vector-effect="non-scaling-stroke" opacity="0.85"/></svg>';
+  }
+
   function spark(pos) {
     var ser = pos.series || [];
     if (ser.length < 2) {
@@ -605,6 +622,7 @@
         var val = posValue(p);
         rows.push({
           name: p.name, ticker: p.ticker, book: k, colour: state.books[k].color, note: p.note,
+          series: p.series,
           pct: (p.now - p.entry) / p.entry * 100,
           gain: val - p.cost, cost: p.cost
         });
@@ -634,17 +652,19 @@
     }
     h += '</div>';
 
-    rows.forEach(function (r) {
+    rows.forEach(function (r, i) {
       var w = Math.abs(r.pct) / widest * 50;
       var left = r.pct >= 0 ? 50 : 50 - w;
       h += '<div class="mv">';
-      h += '<div class="mv-top"><span class="mv-name">' + esc(r.name) + '</span>'
+      h += '<div class="mv-top"><span class="mv-rank">' + (i + 1) + '</span>'
+        + '<span class="mv-name">' + esc(r.name) + '</span>'
         + '<span class="mv-pct ' + cls(r.pct) + '">' + pct(r.pct) + '</span></div>';
       h += '<div class="mv-sub" style="color:' + r.colour + '">' + esc(state.books[r.book].name)
         + '<span style="color:var(--muted)"> \u00b7 ' + esc(r.ticker) + ' \u00b7 '
         + money(r.cost) + ' in \u00b7 ' + (r.gain >= 0 ? '+' : '\u2212') + money(Math.abs(r.gain))
         + '</span></div>';
       if (r.note) h += '<div class="pos-note">' + esc(r.note) + '</div>';
+      h += miniSpark(r.series, r.colour);
       h += '<div class="mv-bar"><div class="mv-fill" style="left:' + left + '%;width:'
         + w + '%;background:' + r.colour + '"></div></div>';
       h += '</div>';
@@ -739,6 +759,11 @@
       h += '<div style="flex:1 1 100%">';
       h += '<div class="field" style="margin:8px 0 0"><label for="avk">Alpha Vantage key</label>'
         + '<input id="avk" value="' + esc(state.avKey) + '" placeholder="Paste your free key" autocomplete="off"></div>';
+      h += '<div class="field"><label for="startTab">Open on</label>'
+        + '<select id="startTab">'
+        + '<option value="books"' + (state.startTab === 'books' ? ' selected' : '') + '>Holdings</option>'
+        + '<option value="movers"' + (state.startTab === 'movers' ? ' selected' : '') + '>Movers</option>'
+        + '</select></div>';
       h += '<div class="row2">'
         + '<div class="field"><label for="n-a">First portfolio</label>'
         + '<input id="n-a" value="' + esc(state.books.screened.name) + '"></div>'
@@ -1777,6 +1802,8 @@
         var newKey = txt('avk');
         if (newKey !== state.avKey) state.avUsage = { date: '', n: 0 };
         state.avKey = newKey;
+        var st = document.getElementById('startTab');
+        if (st) state.startTab = st.value;
         var a = txt('n-a'), b = txt('n-b');
         if (a) state.books.screened.name = a;
         if (b) state.books.defence.name = b;
