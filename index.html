@@ -702,9 +702,8 @@
     var h = '<div class="pricebar">';
 
     if (state.avKey) {
-      h += '<button class="act" data-alpha="1"' + (busy ? ' disabled' : '') + '>'
+      h += '<button class="act" data-pick="1"' + (busy ? ' disabled' : '') + '>'
          + (busy ? 'Working\u2026' : 'Refresh data') + '</button>';
-      h += '<button class="act ghost" data-pick="1"' + (busy ? ' disabled' : '') + '>Choose some</button>';
     }
     h += '<button class="act ghost" data-paste="1">Enter prices</button>';
     if (false) {
@@ -806,9 +805,11 @@
 
     if (showPick) {
       h += '<div style="flex:1 1 100%">';
-      h += '<p class="hint" style="margin:10px 0 8px">Each one costs a call. '
-        + budgetLeft() + ' left by this device\u2019s count \u2014 which can read high, because the '
-        + 'allowance is shared across everything on your connection.</p>';
+      var already = allPositions().filter(function (p) { return p.at === today(); }).length;
+      h += '<p class="hint" style="margin:10px 0 8px">One lookup each. '
+        + (already ? already + ' of ' + allPositions().length + ' were already fetched today, so they start unticked. ' : '')
+        + 'Roughly ' + budgetLeft() + ' left by this device\u2019s count, which is only a guess \u2014 '
+        + 'the allowance follows your key and your connection, not this app.</p>';
       h += '<div class="btn-row" style="margin-bottom:8px">'
         + '<button class="act ghost" data-sel="all">All</button>'
         + '<button class="act ghost" data-sel="missing">Missing only</button>'
@@ -835,8 +836,11 @@
         + '<button class="act" data-refreshsel="1"' + (n ? '' : ' disabled') + '>'
         + (n ? 'Refresh these ' + n : 'Nothing chosen') + '</button>'
         + '<button class="act ghost" data-nopick="1">Close</button></div>';
-      h += '<p class="hint" style="margin-top:10px">A partial run leaves the 30-day chart alone, '
-        + 'since rebuilding it needs every holding.</p>';
+      h += '<p class="hint" style="margin-top:10px">'
+        + (n === allPositions().length
+            ? 'A full run also redraws the 30-day chart.'
+            : 'A partial run leaves the 30-day chart alone, since rebuilding it needs every holding.')
+        + '</p>';
       h += '</div>';
     }
 
@@ -1663,7 +1667,17 @@
     });
 
     root.querySelectorAll('[data-pick]').forEach(function (el) {
-      el.onclick = function () { showPick = !showPick; showKey = false; showExport = false; render(); };
+      el.onclick = function () {
+        showPick = !showPick;
+        showKey = false; showExport = false; showPaste = false;
+        if (showPick) {
+          var stale = allPositions().filter(function (p) { return p.at !== today(); });
+          picked = {};
+          // default to what actually needs fetching; everything, if it is all current
+          (stale.length ? stale : allPositions()).forEach(function (p) { picked[p.id] = true; });
+        }
+        render();
+      };
     });
     root.querySelectorAll('[data-nopick]').forEach(function (el) {
       el.onclick = function () { showPick = false; render(); };
