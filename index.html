@@ -175,6 +175,10 @@
   var topping = null;    // "book:id"
   var importing = null;  // book key
   var firstRun = false;
+  var showBackup = false;
+  var remoteNewer = null;   // timestamp on the server
+  var syncNote = null;
+  var joining = false;   // pasting an existing code rather than making one
   var updateReady = false;
   var waitingWorker = null;
   var running = null;
@@ -217,6 +221,8 @@
       history: [],
       prior: [],
       avKey: '',
+      syncCode: '',
+      updated: 0,
       avUsage: { date: '', n: 0 },
       books: {
         screened: {
@@ -294,17 +300,20 @@
     if (!state.history) state.history = [];
     if (!state.prior) state.prior = [];
     if (typeof state.avKey !== 'string') state.avKey = '';
+    if (typeof state.syncCode !== 'string') state.syncCode = '';
     if (!state.avUsage) state.avUsage = { date: '', n: 0 };
     if (!inClaude() && !state.avKey) {
       fetchNote = 'Add an Alpha Vantage key in Settings to fetch prices.';
     }
     render();
+    checkRemote();
   }
 
   async function save() {
     try {
       await store.set(KEY, JSON.stringify(state));
       error = null;
+      if (state.syncCode) pushState();
     } catch (e) {
       error = 'Could not save. Your last change is on screen but not stored — try again in a moment.';
       render();
@@ -355,6 +364,11 @@
     if (updateReady) {
       html += '<div class="update"><span>A new version is ready.</span>'
         + '<button data-update="1">Reload</button></div>';
+    }
+    if (remoteNewer) {
+      html += '<div class="update"><span>Another device has newer data.</span>'
+        + '<button data-pull="1">Pull it</button>'
+        + '<button data-ignore="1">Ignore</button></div>';
     }
     if (error) html += '<div class="err">' + esc(error) + '</div>';
 
@@ -617,8 +631,48 @@
         + '<div class="field"><label for="n-b">Second portfolio</label>'
         + '<input id="n-b" value="' + esc(state.books.defence.name) + '"></div></div>';
       h += '<div class="btn-row"><button class="act" data-savekey="1">Save</button>'
+        + '<button class="act ghost" data-backup="1">Back up or restore</button>'
         + '<button class="act ghost" data-hidekey="1">Close</button>'
         + '<button class="act warn" data-reset="1">Clear and start fresh</button></div>';
+      if (showBackup) {
+        h += '<div style="margin-top:12px;padding-top:12px;border-top:1px solid var(--rule)">';
+        h += '<div class="field"><label for="bak">Everything, as text</label>'
+          + '<textarea id="bak" rows="6" style="font-family:ui-monospace,Menlo,Consolas,monospace;font-size:11px">'
+          + esc(backupText()) + '</textarea></div>';
+        h += '<div class="btn-row"><button class="act ghost" data-bakcopy="1">Copy</button>'
+          + '<button class="act warn" data-restore="1">Restore from this box</button></div>';
+        h += '<p class="hint" style="margin-top:10px">Keep a copy somewhere safe. To move to another '
+          + 'device, paste it into the box there and restore. Your key is deliberately left out, so '
+          + 'add that separately.</p>';
+        h += '<div class="field" style="margin-top:14px"><label for="sync">Sync code</label>'
+          + '<input id="sync" value="' + esc(state.syncCode || '') + '" autocomplete="off" '
+          + 'spellcheck="false" ' + (joining ? 'placeholder="paste the code from your other device"' : 'readonly')
+          + '></div>';
+        h += '<div class="btn-row">';
+        if (joining) {
+          h += '<button class="act" data-usecode="1">Use this code</button>'
+            + '<button class="act ghost" data-nojoin="1">Cancel</button>';
+        } else {
+          h += '<button class="act ghost" data-gencode="1">'
+            + (state.syncCode ? 'Make a new one' : 'Generate a code') + '</button>'
+            + '<button class="act ghost" data-joincode="1">I have one already</button>';
+          if (state.syncCode) h += '<button class="act ghost" data-pullnow="1">Pull now</button>';
+        }
+        h += '</div>';
+        h += '<p class="hint" style="margin-top:10px">'
+          + (joining
+              ? 'Paste the exact code from the device you want to join, then Use this code and Pull now.'
+              : state.syncCode
+                ? 'Changes save automatically. To link another device, enter this code there. '
+                  + 'Write it down \u2014 it is not stored anywhere else and cannot be recovered. '
+                  + 'Making a new one abandons whatever is under the old code.'
+                : 'Optional, and generated rather than chosen \u2014 anyone holding the code can read '
+                  + 'and write that slot, and people pick guessable phrases. Twenty random characters '
+                  + 'would take around eight hundred times the age of the universe to work through '
+                  + 'at a billion attempts a second.')
+          + (syncNote ? '<br>' + esc(syncNote) : '') + '</p>';
+        h += '</div>';
+      }
       h += '<p class="hint" style="margin-top:10px">'
         + 'No key yet? Get a free one at <a href="https://www.alphavantage.co/support/#api-key" '
         + 'target="_blank" rel="noopener">alphavantage.co</a> \u2014 enter an email and a one-line '
@@ -674,6 +728,95 @@
       });
     }
     return out.join('\n');
+  }
+
+  var CODE_CHARS = '23456789abcdefghjkmnpqrstvwxyz';  // no 0/o, 1/l/i \u2014 nothing to mistype
+
+  function makeCode() {
+    var n = 20;
+    var bytes = new Uint8Array(n);
+    if (window.crypto && crypto.getRandomValues) {
+      crypto.getRandomValues(bytes);
+    } else {
+      for (var j = 0; j < n; j++) bytes[j] = Math.floor(Math.random() * 256);
+    }
+    var out = '';
+    for (var i = 0; i < n; i++) {
+      if (i && i % 4 === 0) out += '-';
+      out += CODE_CHARS[bytes[i] % CODE_CHARS.length];
+    }
+    return out;
+  }
+
+  function syncUrl() { return './api/state?code=' + encodeURIComponent(state.syncCode || ''); }
+
+  async function pushState() {
+    if (!state.syncCode) return;
+    state.updated = Date.now();
+    try {
+      var res = await fetch(syncUrl(), {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ updated: state.updated, data: backupObject() })
+      });
+      if (!res.ok) {
+        var j = await res.json().catch(function () { return {}; });
+        syncNote = j.error || 'Sync failed.';
+      } else {
+        syncNote = 'Synced ' + new Date(state.updated).toLocaleTimeString('en-GB',
+          { hour: '2-digit', minute: '2-digit' }) + '.';
+      }
+    } catch (e) {
+      syncNote = 'Sync failed \u2014 no connection.';
+    }
+  }
+
+  async function checkRemote() {
+    if (!state.syncCode) return;
+    try {
+      var res = await fetch(syncUrl(), { cache: 'no-store' });
+      if (!res.ok) return;
+      var j = await res.json();
+      if (j && j.updated && j.updated > (state.updated || 0) + 1000) {
+        remoteNewer = j.updated;
+        render();
+      }
+    } catch (e) { /* offline, no matter */ }
+  }
+
+  async function pullState() {
+    try {
+      var res = await fetch(syncUrl(), { cache: 'no-store' });
+      if (!res.ok) { error = 'Nothing stored under that code yet.'; render(); return; }
+      var j = await res.json();
+      if (!j.data || !j.data.books) { error = 'What came back was not usable.'; render(); return; }
+      var keepKey = state.avKey, keepCode = state.syncCode;
+      state = j.data;
+      state.avKey = keepKey;
+      state.syncCode = keepCode;
+      state.updated = j.updated;
+      if (!state.history) state.history = [];
+      if (!state.prior) state.prior = [];
+      if (!state.avUsage) state.avUsage = { date: '', n: 0 };
+      remoteNewer = null; error = null;
+      syncNote = 'Pulled from the other device.';
+      await store.set(KEY, JSON.stringify(state));
+      render();
+    } catch (e) {
+      error = 'Could not reach sync.';
+      render();
+    }
+  }
+
+  function backupObject() {
+    var copy = JSON.parse(JSON.stringify(state));
+    copy.avKey = '';
+    copy.syncCode = '';
+    return copy;
+  }
+
+  function backupText() {
+    return JSON.stringify(backupObject());
   }
 
   function budgetLeft() {
@@ -1067,6 +1210,83 @@
     root.querySelectorAll('[data-cancel]').forEach(function (el) {
       el.onclick = function () { adding = null; render(); };
     });
+    root.querySelectorAll('[data-pull]').forEach(function (el) {
+      el.onclick = function () { pullState(); };
+    });
+    root.querySelectorAll('[data-pullnow]').forEach(function (el) {
+      el.onclick = function () { pullState(); };
+    });
+    root.querySelectorAll('[data-gencode]').forEach(function (el) {
+      el.onclick = function () {
+        if (state.syncCode && !window.confirm('Make a new code? Anything stored under the old one is left behind, and other devices stop syncing until you enter the new code there.')) return;
+        state.syncCode = makeCode();
+        joining = false;
+        syncNote = 'New code made. Write it down.';
+        save(); render();
+      };
+    });
+    root.querySelectorAll('[data-joincode]').forEach(function (el) {
+      el.onclick = function () { joining = true; render(); };
+    });
+    root.querySelectorAll('[data-nojoin]').forEach(function (el) {
+      el.onclick = function () { joining = false; render(); };
+    });
+    root.querySelectorAll('[data-usecode]').forEach(function (el) {
+      el.onclick = function () {
+        var v = (document.getElementById('sync') || {}).value || '';
+        v = v.trim().toLowerCase();
+        if (!/^[\w-]{12,128}$/.test(v)) {
+          error = 'That does not look like a sync code. Copy the whole thing, dashes included.';
+          render(); return;
+        }
+        state.syncCode = v;
+        joining = false; error = null;
+        syncNote = 'Code set. Pull now to bring the other device\u2019s data over.';
+        save(); render();
+      };
+    });
+    root.querySelectorAll('[data-ignore]').forEach(function (el) {
+      el.onclick = function () { remoteNewer = null; render(); };
+    });
+
+    root.querySelectorAll('[data-backup]').forEach(function (el) {
+      el.onclick = function () { showBackup = !showBackup; render(); };
+    });
+    root.querySelectorAll('[data-bakcopy]').forEach(function (el) {
+      el.onclick = function () {
+        var ta = document.getElementById('bak');
+        if (!ta) return;
+        ta.select(); ta.setSelectionRange(0, 999999);
+        var ok = false;
+        try { ok = document.execCommand('copy'); } catch (e) { ok = false; }
+        if (!ok && navigator.clipboard) {
+          navigator.clipboard.writeText(ta.value).then(function () { el.textContent = 'Copied'; },
+            function () { el.textContent = 'Select it and copy by hand'; });
+        } else { el.textContent = ok ? 'Copied' : 'Select it and copy by hand'; }
+      };
+    });
+    root.querySelectorAll('[data-restore]').forEach(function (el) {
+      el.onclick = function () {
+        var raw = txt('bak');
+        var next;
+        try { next = JSON.parse(raw); } catch (e) { next = null; }
+        if (!next || !next.books || !next.books.screened) {
+          error = 'That text is not a backup. Paste the whole block, including the outer braces.';
+          render(); return;
+        }
+        if (!window.confirm('Replace everything on this device with the pasted backup?')) return;
+        var keepKey = state.avKey;
+        state = next;
+        if (!state.avKey) state.avKey = keepKey;
+        if (!state.history) state.history = [];
+        if (!state.prior) state.prior = [];
+        if (!state.avUsage) state.avUsage = { date: '', n: 0 };
+        showBackup = false; showKey = false; error = null;
+        fetchNote = 'Restored.';
+        save(); render();
+      };
+    });
+
     root.querySelectorAll('[data-start]').forEach(function (el) {
       el.onclick = function () {
         if (el.dataset.start === 'empty') {

@@ -1,6 +1,6 @@
 /* Bump VERSION on every deploy — any change to the string triggers the update banner.
-   Patch for fixes, minor for features. v1.1 = first-run chooser. v1.2 = key instructions. */
-const VERSION = 'v1.2';
+   Patch for fixes, minor for features. v1.1 = first-run chooser. v1.2 = key instructions. v1.3 = backup and restore. v1.4 = cross-device sync. v1.5 = generated sync codes. */
+const VERSION = 'v1.5';
 const CACHE = 'portfolios-' + VERSION;
 
 const SHELL = [
