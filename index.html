@@ -188,7 +188,9 @@
   var showBackup = false;
   var remoteNewer = null;   // timestamp on the server
   var syncNote = null;
+  var syncing = false;   // a pull is in flight; never push over it
   var joining = false;
+  var showPaste = false;
   var showPick = false;
   var picked = {};   // pasting an existing code rather than making one
   var updateReady = false;
@@ -474,6 +476,7 @@
     h += '<div class="field"><label for="n-' + pos.id + '">Price now (pence)</label>'
        + '<input id="n-' + pos.id + '" type="number" step="0.01" inputmode="decimal" value="' + (pos.now || '') + '"></div>';
     h += '</div>';
+    h += spark(pos);
     h += '<div class="field"><label for="s-' + pos.id + '">Data symbol</label>'
        + '<input id="s-' + pos.id + '" value="' + esc(avSymbol(pos)) + '" autocomplete="off"></div>';
     h += '<div class="btn-row"><button class="act" data-save="' + key + ':' + pos.id + '">Save</button>'
@@ -537,6 +540,35 @@
       out.push({ name: parts[0], ticker: parts[1], cost: amount });
     });
     return out;
+  }
+
+  function spark(pos) {
+    var ser = pos.series || [];
+    if (ser.length < 2) {
+      return '<p class="hint">No price history yet \u2014 it arrives with the next full refresh.</p>';
+    }
+    var vals = ser.map(function (x) { return x.c; });
+    var lo = Math.min.apply(null, vals), hi = Math.max.apply(null, vals);
+    var span = (hi - lo) || 1;
+    var W = 300, H = 44;
+    var pts = ser.map(function (x, i) {
+      return ((i / (ser.length - 1)) * W).toFixed(1) + ',' + (H - ((x.c - lo) / span) * H).toFixed(1);
+    }).join(' ');
+    var move = (vals[vals.length - 1] - vals[0]) / vals[0] * 100;
+    var h = '<div style="margin-bottom:12px">';
+    h += '<svg viewBox="0 0 ' + W + ' ' + H + '" preserveAspectRatio="none" role="img" '
+      + 'aria-label="Price over the last ' + ser.length + ' trading days" '
+      + 'style="display:block;width:100%;height:44px">';
+    h += '<polyline points="' + pts + '" fill="none" stroke="var(--ink)" stroke-width="1.5" '
+      + 'stroke-linejoin="round" vector-effect="non-scaling-stroke"/>';
+    h += '</svg>';
+    h += '<div style="font-size:11px;color:var(--muted);margin-top:4px;display:flex;'
+      + 'justify-content:space-between;font-variant-numeric:tabular-nums">'
+      + '<span>' + niceDate(ser[0].d) + '</span>'
+      + '<span>low ' + lo + 'p \u00b7 high ' + hi + 'p</span>'
+      + '<span class="' + cls(move) + '">' + pct(move) + '</span></div>';
+    h += '</div>';
+    return h;
   }
 
   function addForm(key) {
@@ -673,6 +705,9 @@
          + (busy ? 'Working\u2026' : 'Refresh data') + '</button>';
       h += '<button class="act ghost" data-pick="1"' + (busy ? ' disabled' : '') + '>Choose some</button>';
     }
+    h += '<button class="act ghost" data-paste="1">Enter prices</button>';
+    if (false) {
+    }
     if (inClaude()) {
       h += '<button class="act' + (state.avKey ? ' ghost' : '') + '" data-fetch="1"' + (busy ? ' disabled' : '') + '>'
          + (busy ? 'Looking\u2026' : state.avKey ? 'Search instead' : 'Update prices') + '</button>';
@@ -756,6 +791,18 @@
         + (running ? '<br><br>Running version ' + esc(running) + '.' : '') + '</p>';
       h += '</div>';
     }
+    if (showPaste) {
+      h += '<div style="flex:1 1 100%">';
+      h += '<div class="field" style="margin:8px 0 0"><label for="pp">One per line: ticker, price in pence</label>'
+        + '<textarea id="pp" rows="8" placeholder="SGLN, 6367&#10;SHEL, 3437&#10;TW., 82.74" '
+        + 'style="font-family:ui-monospace,Menlo,Consolas,monospace;font-size:12px"></textarea></div>';
+      h += '<div class="btn-row"><button class="act" data-pastego="1">Apply</button>'
+        + '<button class="act ghost" data-nopaste="1">Close</button></div>';
+      h += '<p class="hint" style="margin-top:10px">Costs no lookups. Sets the entry price where there '
+        + 'isn\u2019t one, and updates the current price either way. Tickers must match exactly.</p>';
+      h += '</div>';
+    }
+
     if (showPick) {
       h += '<div style="flex:1 1 100%">';
       h += '<p class="hint" style="margin:10px 0 8px">Each one costs a call. '
@@ -859,7 +906,7 @@
   function syncUrl() { return './api/state?code=' + encodeURIComponent(state.syncCode || ''); }
 
   async function pushState() {
-    if (!state.syncCode) return;
+    if (!state.syncCode || syncing) return;
     state.updated = Date.now();
     try {
       var res = await fetch(syncUrl(), {
@@ -893,11 +940,12 @@
   }
 
   async function pullState() {
+    syncing = true;
     try {
       var res = await fetch(syncUrl(), { cache: 'no-store' });
-      if (!res.ok) { error = 'Nothing stored under that code yet.'; render(); return; }
+      if (!res.ok) { syncing = false; error = 'Nothing stored under that code yet.'; render(); return; }
       var j = await res.json();
-      if (!j.data || !j.data.books) { error = 'What came back was not usable.'; render(); return; }
+      if (!j.data || !j.data.books) { syncing = false; error = 'What came back was not usable.'; render(); return; }
       var keepKey = state.avKey, keepCode = state.syncCode;
       state = j.data;
       state.avKey = keepKey;
@@ -909,8 +957,10 @@
       remoteNewer = null; error = null;
       syncNote = 'Pulled from the other device.';
       await store.set(KEY, JSON.stringify(state));
+      syncing = false;
       render();
     } catch (e) {
+      syncing = false;
       error = 'Could not reach sync.';
       render();
     }
@@ -986,6 +1036,8 @@
           var m = {};
           Object.keys(ts).forEach(function (d) { m[d] = parseFloat(ts[d]['4. close']); });
           closes[p.id] = m;
+          var days = Object.keys(m).sort().slice(-60);
+          p.series = days.map(function (d) { return { d: d, c: m[d] }; });
           got++;
         } else {
           dead.push(p.ticker);
@@ -1357,8 +1409,13 @@
         }
         state.syncCode = v;
         joining = false; error = null;
-        syncNote = 'Code set. Pull now to bring the other device\u2019s data over.';
-        save(); render();
+        syncing = true;
+        syncNote = 'Code set, fetching\u2026';
+        render();
+        store.set(KEY, JSON.stringify(state)).then(function () {
+          syncing = false;
+          pullState();
+        });
       };
     });
     root.querySelectorAll('[data-ignore]').forEach(function (el) {
@@ -1571,6 +1628,35 @@
     root.querySelectorAll('[data-alpha]').forEach(function (el) {
       el.onclick = function () { if (!busy) fetchAlpha(); };
     });
+    root.querySelectorAll('[data-paste]').forEach(function (el) {
+      el.onclick = function () { showPaste = !showPaste; showPick = false; showKey = false; showExport = false; render(); };
+    });
+    root.querySelectorAll('[data-nopaste]').forEach(function (el) {
+      el.onclick = function () { showPaste = false; render(); };
+    });
+    root.querySelectorAll('[data-pastego]').forEach(function (el) {
+      el.onclick = function () {
+        var n = 0;
+        txt('pp').split('\n').forEach(function (line) {
+          var bits = line.split(',').map(function (x) { return x.trim(); });
+          if (bits.length < 2) return;
+          var price = parseFloat(bits[1].replace(/[^0-9.]/g, ''));
+          if (!isFinite(price) || price <= 0) return;
+          allPositions().forEach(function (p) {
+            if (p.ticker.toLowerCase() !== bits[0].toLowerCase()) return;
+            if (!p.entry) p.entry = price;
+            p.now = price;
+            p.at = today();
+            n++;
+          });
+        });
+        if (!n) { error = 'Nothing matched. Check the tickers against the Holdings list.'; render(); return; }
+        showPaste = false; error = null;
+        fetchNote = 'Set ' + n + ' prices by hand.';
+        snapshot(); save(); render();
+      };
+    });
+
     root.querySelectorAll('[data-pick]').forEach(function (el) {
       el.onclick = function () { showPick = !showPick; showKey = false; showExport = false; render(); };
     });
