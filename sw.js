@@ -4,8 +4,9 @@
    v1.11 = pending prices survive a reload.
    v1.12 = call tally advises rather than blocks.
    v1.13 = refresh always confirms what it will spend.
-   v1.14 = fix sync timestamp written after the local save. */
-const VERSION = 'v1.14';
+   v1.14 = fix sync timestamp written after the local save.
+   v1.15 = per-holding descriptions. */
+const VERSION = 'v1.15';
 const CACHE = 'portfolios-' + VERSION;
 
 const SHELL = [

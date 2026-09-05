@@ -80,6 +80,7 @@
   .pos-main { flex: 1; min-width: 0; }
   .pos-name { font-size: 14px; }
   .pos-tick { font-size: 11px; color: var(--muted); margin-top: 2px; font-variant-numeric: tabular-nums; }
+  .pos-note { font-size: 12px; color: var(--muted); margin-top: 5px; line-height: 1.45; }
   .pos-right { text-align: right; font-variant-numeric: tabular-nums; }
   .pos-val { font-family: var(--serif); font-size: 15px; }
   .pos-pl { font-size: 11px; margin-top: 2px; }
@@ -449,7 +450,9 @@
       var priced = pos.entry && pos.now;
       h += '<div class="pos" data-pos="' + key + ':' + pos.id + '" tabindex="0" role="button">';
       h += '<div class="pos-main"><div class="pos-name">' + esc(pos.name) + '</div>';
-      h += '<div class="pos-tick">' + esc(pos.ticker) + (priced ? ' \u00B7 ' + pos.entry + 'p \u2192 ' + pos.now + 'p' : ' \u00B7 no price yet') + '</div></div>';
+      h += '<div class="pos-tick">' + esc(pos.ticker) + (priced ? ' \u00B7 ' + pos.entry + 'p \u2192 ' + pos.now + 'p' : ' \u00B7 no price yet') + '</div>';
+      if (pos.note) h += '<div class="pos-note">' + esc(pos.note) + '</div>';
+      h += '</div>';
       h += '<div class="pos-right"><div class="pos-val">' + money(val) + '</div>';
       h += '<div class="pos-pl ' + cls(pl) + '">' + (priced ? pct(pl / pos.cost * 100) : 'cost ' + money(pos.cost)) + '</div></div>';
       h += '</div>';
@@ -479,6 +482,9 @@
        + '<input id="n-' + pos.id + '" type="number" step="0.01" inputmode="decimal" value="' + (pos.now || '') + '"></div>';
     h += '</div>';
     h += spark(pos);
+    h += '<div class="field"><label for="d-' + pos.id + '">Why it is here</label>'
+       + '<textarea id="d-' + pos.id + '" placeholder="One line on what this is and why you bought it">'
+       + esc(pos.note || '') + '</textarea></div>';
     h += '<div class="field"><label for="s-' + pos.id + '">Data symbol</label>'
        + '<input id="s-' + pos.id + '" value="' + esc(avSymbol(pos)) + '" autocomplete="off"></div>';
     h += '<div class="btn-row"><button class="act" data-save="' + key + ':' + pos.id + '">Save</button>'
@@ -583,6 +589,7 @@
     h += '</div>';
     h += '<div class="field"><label for="a-entry">Entry price (pence)</label><input id="a-entry" type="number" step="0.01" inputmode="decimal"></div>';
     h += '<div class="field"><label for="a-why">Why now</label><textarea id="a-why" placeholder="What changed that made this worth buying?"></textarea></div>';
+    h += '<p class="hint" style="margin:-4px 0 10px">This is kept in the trade log and as the holding\u2019s description.</p>';
     h += '<p class="hint">Cash available: ' + money(b.cash) + '. Buying more than that adds new money, which the log will record.</p>';
     h += '<div class="btn-row"><button class="act" data-buy="' + key + '">Buy</button>'
        + '<button class="act ghost" data-cancel="1">Cancel</button></div>';
@@ -597,7 +604,7 @@
         if (!p.entry || !p.now) return;
         var val = posValue(p);
         rows.push({
-          name: p.name, ticker: p.ticker, book: k, colour: state.books[k].color,
+          name: p.name, ticker: p.ticker, book: k, colour: state.books[k].color, note: p.note,
           pct: (p.now - p.entry) / p.entry * 100,
           gain: val - p.cost, cost: p.cost
         });
@@ -637,6 +644,7 @@
         + '<span style="color:var(--muted)"> \u00b7 ' + esc(r.ticker) + ' \u00b7 '
         + money(r.cost) + ' in \u00b7 ' + (r.gain >= 0 ? '+' : '\u2212') + money(Math.abs(r.gain))
         + '</span></div>';
+      if (r.note) h += '<div class="pos-note">' + esc(r.note) + '</div>';
       h += '<div class="mv-bar"><div class="mv-fill" style="left:' + left + '%;width:'
         + w + '%;background:' + r.colour + '"></div></div>';
       h += '</div>';
@@ -798,13 +806,14 @@
     }
     if (showPaste) {
       h += '<div style="flex:1 1 100%">';
-      h += '<div class="field" style="margin:8px 0 0"><label for="pp">One per line: ticker, price in pence</label>'
-        + '<textarea id="pp" rows="8" placeholder="SGLN, 6367&#10;SHEL, 3437&#10;TW., 82.74" '
+      h += '<div class="field" style="margin:8px 0 0"><label for="pp">One per line: ticker, then a price or a description</label>'
+        + '<textarea id="pp" rows="8" placeholder="SGLN, 6367&#10;CHG, Munitions and energetics \u2014 the unglamorous bottleneck.&#10;GRG, 1865, Down 53% but taking share." '
         + 'style="font-family:ui-monospace,Menlo,Consolas,monospace;font-size:12px"></textarea></div>';
       h += '<div class="btn-row"><button class="act" data-pastego="1">Apply</button>'
         + '<button class="act ghost" data-nopaste="1">Close</button></div>';
-      h += '<p class="hint" style="margin-top:10px">Costs no lookups. Sets the entry price where there '
-        + 'isn\u2019t one, and updates the current price either way. Tickers must match exactly.</p>';
+      h += '<p class="hint" style="margin-top:10px">Costs no lookups. A number sets the price \u2014 entry too, '
+        + 'if there isn\u2019t one. Anything else becomes the description. Both together works: '
+        + 'ticker, price, description. Tickers must match exactly.</p>';
       h += '</div>';
     }
 
@@ -1509,7 +1518,7 @@
         rows.forEach(function (r) {
           b.positions.push({
             id: uid(), name: r.name, ticker: r.ticker,
-            cost: r.cost, entry: null, now: null
+            cost: r.cost, entry: null, now: null, note: why
           });
           b.cash = Math.max(0, b.cash - r.cost);
           state.trades.unshift({
@@ -1536,6 +1545,7 @@
         f.pos.now = now != null ? now : entry;
         f.pos.at = today();
         f.pos.sym = txt('s-' + f.pos.id);
+        f.pos.note = txt('d-' + f.pos.id);
         openPos = null;
         snapshot();
         save(); render();
@@ -1614,7 +1624,7 @@
         }
         b.positions.push({
           id: uid(), name: name, ticker: txt('a-tick') || '\u2014',
-          cost: cost, entry: num('a-entry'), now: num('a-entry')
+          cost: cost, entry: num('a-entry'), now: num('a-entry'), note: txt('a-why')
         });
         b.cash = Math.max(0, b.cash - cost);
         state.trades.unshift({
@@ -1652,21 +1662,41 @@
       el.onclick = function () {
         var n = 0;
         txt('pp').split('\n').forEach(function (line) {
-          var bits = line.split(',').map(function (x) { return x.trim(); });
-          if (bits.length < 2) return;
-          var price = parseFloat(bits[1].replace(/[^0-9.]/g, ''));
-          if (!isFinite(price) || price <= 0) return;
+          if (!line.trim()) return;
+          var cut = line.indexOf(',');
+          if (cut === -1) return;
+          var tick = line.slice(0, cut).trim();
+          var rest = line.slice(cut + 1).trim();
+          if (!tick || !rest) return;
+
+          var price = null, note = null;
+          if (/^[0-9.]+$/.test(rest)) {
+            price = parseFloat(rest);
+          } else {
+            var cut2 = rest.indexOf(',');
+            var head = cut2 === -1 ? '' : rest.slice(0, cut2).trim();
+            if (cut2 !== -1 && /^[0-9.]+$/.test(head)) {
+              price = parseFloat(head);
+              note = rest.slice(cut2 + 1).trim();
+            } else {
+              note = rest;
+            }
+          }
+
           allPositions().forEach(function (p) {
-            if (p.ticker.toLowerCase() !== bits[0].toLowerCase()) return;
-            if (!p.entry) p.entry = price;
-            p.now = price;
-            p.at = today();
+            if (p.ticker.toLowerCase() !== tick.toLowerCase()) return;
+            if (price != null && isFinite(price) && price > 0) {
+              if (!p.entry) p.entry = price;
+              p.now = price;
+              p.at = today();
+            }
+            if (note) p.note = note;
             n++;
           });
         });
         if (!n) { error = 'Nothing matched. Check the tickers against the Holdings list.'; render(); return; }
         showPaste = false; error = null;
-        fetchNote = 'Set ' + n + ' prices by hand.';
+        fetchNote = 'Updated ' + n + ' holdings by hand.';
         snapshot(); save(); render();
       };
     });
