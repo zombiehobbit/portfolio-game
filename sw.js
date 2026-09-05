@@ -1,5 +1,6 @@
-/* Bump VERSION on every deploy. That is what tells installed copies an update exists. */
-const VERSION = 'v1';
+/* Bump VERSION on every deploy — any change to the string triggers the update banner.
+   Patch for fixes, minor for features. v1.1 = first-run chooser. */
+const VERSION = 'v1.1';
 const CACHE = 'portfolios-' + VERSION;
 
 const SHELL = [

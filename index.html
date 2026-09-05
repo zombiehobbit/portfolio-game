@@ -173,6 +173,7 @@
   var selling = null;    // "book:id"
   var topping = null;    // "book:id"
   var importing = null;  // book key
+  var firstRun = false;
   var updateReady = false;
   var waitingWorker = null;
   var running = null;
@@ -284,6 +285,7 @@
   async function load() {
     try {
       var raw = await store.get(KEY);
+      if (!raw) firstRun = true;
       state = raw ? JSON.parse(raw) : seed();
     } catch (e) {
       state = seed();
@@ -293,7 +295,7 @@
     if (typeof state.avKey !== 'string') state.avKey = '';
     if (!state.avUsage) state.avUsage = { date: '', n: 0 };
     if (!inClaude() && !state.avKey) {
-      fetchNote = 'Running outside Claude. Add an Alpha Vantage key and prices work here too \u2014 without one there\u2019s no way to fetch them.';
+      fetchNote = 'Add an Alpha Vantage key in Settings to fetch prices.';
     }
     render();
   }
@@ -343,6 +345,12 @@
     var html = '';
     html += '<h1>' + esc(state.books.screened.name) + ' versus ' + esc(state.books.defence.name) + '</h1>';
     html += '<p class="sub">Two fictional \u00A3500 portfolios, same start line. Six months to double.</p>';
+    if (firstRun) {
+      html += welcome();
+      root.innerHTML = html;
+      wire();
+      return;
+    }
     if (updateReady) {
       html += '<div class="update"><span>A new version is ready.</span>'
         + '<button data-update="1">Reload</button></div>';
@@ -551,6 +559,21 @@
 
   function allPositions() {
     return state.books.screened.positions.concat(state.books.defence.positions);
+  }
+
+  function welcome() {
+    var h = '<div class="book" style="margin-top:4px">';
+    h += '<div class="book-head"><span class="book-title">Pick a starting point</span></div>';
+    h += '<div style="padding:14px">';
+    h += '<p class="hint" style="margin:0 0 14px">Two portfolios, \u00a3500 each, six months to double. '
+      + 'Everything you enter stays on this device \u2014 nobody else using this address can see it.</p>';
+    h += '<div class="btn-row"><button class="act" data-start="demo">Screened versus Defence</button>'
+      + '<button class="act ghost" data-start="empty">Start empty</button></div>';
+    h += '<p class="hint" style="margin:14px 0 0">The first loads a worked example \u2014 seven UK holdings '
+      + 'screened of defence against six defence names. The second gives you \u00a3500 cash in each '
+      + 'and you pick your own.</p>';
+    h += '</div></div>';
+    return h;
   }
 
   function priceBar() {
@@ -1034,6 +1057,22 @@
     root.querySelectorAll('[data-cancel]').forEach(function (el) {
       el.onclick = function () { adding = null; render(); };
     });
+    root.querySelectorAll('[data-start]').forEach(function (el) {
+      el.onclick = function () {
+        if (el.dataset.start === 'empty') {
+          state.books.screened.positions = [];
+          state.books.defence.positions = [];
+          state.books.screened.cash = 500;
+          state.books.defence.cash = 500;
+          state.books.screened.name = 'First';
+          state.books.defence.name = 'Second';
+          fetchNote = 'Rename both in Settings, then add your picks.';
+        }
+        firstRun = false;
+        save(); render();
+      };
+    });
+
     root.querySelectorAll('[data-import]').forEach(function (el) {
       el.onclick = function () { importing = el.dataset.import; adding = null; openPos = null; render(); };
     });
