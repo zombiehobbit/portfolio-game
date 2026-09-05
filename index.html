@@ -242,6 +242,8 @@
       avUsage: { date: '', n: 0 },
       pending: null,
       startTab: 'books',
+      viewCode: '',
+      rivals: [],
       books: {
         screened: {
           name: 'Screened', color: 'var(--pine)', cash: 0,
@@ -322,6 +324,8 @@
     if (!state.avUsage) state.avUsage = { date: '', n: 0 };
     if (!state.pending) state.pending = null;
     if (state.startTab !== 'movers') state.startTab = 'books';
+    if (!Array.isArray(state.rivals)) state.rivals = [];
+    if (typeof state.viewCode !== 'string') state.viewCode = '';
     if (!view) view = state.startTab;
     if (!inClaude() && !state.avKey) {
       fetchNote = 'Add an Alpha Vantage key in Settings to fetch prices.';
@@ -403,12 +407,14 @@
     html += '<div class="tabs" role="tablist">';
     html += tab('books', 'Holdings');
     html += tab('movers', 'Movers');
+    html += tab('rivals', 'Rivals');
     html += tab('trades', 'Trades');
     html += tab('diary', 'Diary');
     html += '</div>';
 
     if (view === 'books') html += renderBook('screened') + renderBook('defence');
     if (view === 'movers') html += renderMovers();
+    if (view === 'rivals') html += renderRivals();
     if (view === 'trades') html += renderTrades();
     if (view === 'diary') html += renderDiary();
 
@@ -675,6 +681,116 @@
     });
 
     return h;
+  }
+
+  function rivalValue(book) {
+    if (!book) return 0;
+    return (book.positions || []).reduce(function (t, p) {
+      return t + ((p.entry && p.now && p.entry > 0) ? p.cost * (p.now / p.entry) : p.cost);
+    }, 0) + (book.cash || 0);
+  }
+
+  function renderRivals() {
+    var h = '';
+
+    // standings: everyone's books, yours included
+    var line = [];
+    ['screened', 'defence'].forEach(function (k) {
+      line.push({ who: 'You', name: state.books[k].name, val: bookValue(state.books[k]) });
+    });
+    state.rivals.forEach(function (r) {
+      if (!r.data || !r.data.books) return;
+      ['screened', 'defence'].forEach(function (k) {
+        var b = r.data.books[k];
+        if (b) line.push({ who: r.name, name: b.name, val: rivalValue(b) });
+      });
+    });
+    line.sort(function (a, b) { return b.val - a.val; });
+
+    if (line.length > 2) {
+      h += '<div class="book" style="margin-bottom:14px">';
+      h += '<div class="book-head"><span class="book-title">Standings</span></div>';
+      line.forEach(function (row, i) {
+        h += '<div class="pos"><div class="pos-main"><div class="pos-name">'
+          + '<span class="mv-rank">' + (i + 1) + '</span>' + esc(row.name) + '</div>'
+          + '<div class="pos-tick">' + esc(row.who) + '</div></div>'
+          + '<div class="pos-right"><div class="pos-val">' + money(row.val) + '</div>'
+          + '<div class="pos-pl ' + cls(row.val - 500) + '">' + pct((row.val - 500) / 5) + '</div></div></div>';
+      });
+      h += '</div>';
+    }
+
+    // each rival
+    state.rivals.forEach(function (r) {
+      h += '<div class="book">';
+      h += '<div class="book-head"><span class="book-title">' + esc(r.name) + '</span>'
+        + '<span class="book-val">' + (r.fetched ? niceDate(r.fetched) : 'not fetched') + '</span></div>';
+      if (r.data && r.data.books) {
+        ['screened', 'defence'].forEach(function (k) {
+          var b = r.data.books[k];
+          if (!b) return;
+          h += '<div class="pos" style="background:#F5F7F3"><div class="pos-main">'
+            + '<div class="pos-name">' + esc(b.name) + '</div></div>'
+            + '<div class="pos-right"><div class="pos-val">' + money(rivalValue(b)) + '</div>'
+            + '<div class="pos-pl ' + cls(rivalValue(b) - 500) + '">'
+            + pct((rivalValue(b) - 500) / 5) + '</div></div></div>';
+          (b.positions || []).forEach(function (p) {
+            var val = (p.entry && p.now && p.entry > 0) ? p.cost * (p.now / p.entry) : p.cost;
+            var move = (p.entry && p.now) ? (p.now - p.entry) / p.entry * 100 : null;
+            h += '<div class="pos"><div class="pos-main"><div class="pos-name">' + esc(p.name) + '</div>'
+              + '<div class="pos-tick">' + esc(p.ticker) + ' \u00b7 ' + money(p.cost) + ' in</div>'
+              + (p.note ? '<div class="pos-note">' + esc(p.note) + '</div>' : '')
+              + '</div><div class="pos-right"><div class="pos-val">' + money(val) + '</div>'
+              + '<div class="pos-pl ' + (move == null ? 'flat' : cls(move)) + '">'
+              + (move == null ? 'no price' : pct(move)) + '</div></div></div>';
+          });
+        });
+      } else {
+        h += '<div class="empty" style="border:none">Nothing fetched yet.</div>';
+      }
+      h += '<div class="addbar"><button class="act ghost" data-rfetch="' + r.id + '">Refresh</button> '
+        + '<button class="act ghost" data-rdrop="' + r.id + '">Remove</button></div>';
+      h += '</div>';
+    });
+
+    // add someone, and share yourself
+    h += '<div class="book"><div class="book-head"><span class="book-title">Watch someone</span></div>';
+    h += '<div style="padding:14px">';
+    h += '<div class="row2"><div class="field"><label for="rv-name">Who</label>'
+      + '<input id="rv-name" placeholder="Mel" autocomplete="off"></div>'
+      + '<div class="field"><label for="rv-code">Their view code</label>'
+      + '<input id="rv-code" placeholder="a1b2c3-d4e5f6-..." autocomplete="off" spellcheck="false"></div></div>';
+    h += '<div class="btn-row"><button class="act" data-radd="1">Add</button></div>';
+    h += '<p class="hint" style="margin-top:14px">A view code is read only. It shows holdings and prices, '
+      + 'never the private sync code, and cannot be used to change anything.</p>';
+    if (state.viewCode) {
+      h += '<div class="field" style="margin-top:12px"><label for="myview">Your view code, to share</label>'
+        + '<input id="myview" value="' + esc(state.viewCode) + '" readonly spellcheck="false"></div>';
+      h += '<div class="btn-row"><button class="act ghost" data-vcopy="1">Copy</button></div>';
+    } else {
+      h += '<p class="hint">Your own view code appears once you have a sync code and have pushed at least once.</p>';
+    }
+    h += '</div></div>';
+    return h;
+  }
+
+  async function fetchRival(r) {
+    try {
+      var res = await fetch('./api/state?view=' + encodeURIComponent(r.code), { cache: 'no-store' });
+      if (!res.ok) {
+        var j = await res.json().catch(function () { return {}; });
+        error = j.error || 'Could not fetch ' + r.name + '.';
+        render(); return;
+      }
+      var out = await res.json();
+      r.data = out.data;
+      r.fetched = today();
+      error = null;
+      save(); render();
+    } catch (e) {
+      error = 'Could not reach the server.';
+      render();
+    }
   }
 
   function renderTrades() {
@@ -966,6 +1082,11 @@
         var j = await res.json().catch(function () { return {}; });
         syncNote = j.error || 'Sync failed.';
       } else {
+        var out = await res.json().catch(function () { return {}; });
+        if (out && out.view && out.view !== state.viewCode) {
+          state.viewCode = out.view;
+          store.set(KEY, JSON.stringify(state));
+        }
         syncNote = 'Synced ' + new Date(state.updated).toLocaleTimeString('en-GB',
           { hour: '2-digit', minute: '2-digit' }) + '.';
       }
@@ -1472,6 +1593,45 @@
     });
     root.querySelectorAll('[data-ignore]').forEach(function (el) {
       el.onclick = function () { remoteNewer = null; render(); };
+    });
+
+    root.querySelectorAll('[data-radd]').forEach(function (el) {
+      el.onclick = function () {
+        var name = txt('rv-name') || 'Them';
+        var code = (txt('rv-code') || '').trim().toLowerCase();
+        if (!/^[\w-]{8,64}$/.test(code)) {
+          error = 'That does not look like a view code.'; render(); return;
+        }
+        var r = { id: uid(), name: name, code: code, data: null, fetched: null };
+        state.rivals.push(r);
+        error = null;
+        save(); render();
+        fetchRival(r);
+      };
+    });
+    root.querySelectorAll('[data-rfetch]').forEach(function (el) {
+      el.onclick = function () {
+        var r = state.rivals.filter(function (x) { return x.id === el.dataset.rfetch; })[0];
+        if (r) fetchRival(r);
+      };
+    });
+    root.querySelectorAll('[data-rdrop]').forEach(function (el) {
+      el.onclick = function () {
+        state.rivals = state.rivals.filter(function (x) { return x.id !== el.dataset.rdrop; });
+        save(); render();
+      };
+    });
+    root.querySelectorAll('[data-vcopy]').forEach(function (el) {
+      el.onclick = function () {
+        var ta = document.getElementById('myview');
+        if (!ta) return;
+        ta.removeAttribute('readonly'); ta.select(); ta.setSelectionRange(0, 99999);
+        var ok = false;
+        try { ok = document.execCommand('copy'); } catch (e) { ok = false; }
+        if (!ok && navigator.clipboard) navigator.clipboard.writeText(ta.value);
+        ta.setAttribute('readonly', 'readonly');
+        el.textContent = 'Copied';
+      };
     });
 
     root.querySelectorAll('[data-backup]').forEach(function (el) {

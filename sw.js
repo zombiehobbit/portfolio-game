@@ -7,8 +7,9 @@
    v1.14 = fix sync timestamp written after the local save.
    v1.15 = per-holding descriptions.
    v1.16 = ranked movers with charts, and a choice of opening tab.
-   v1.17 = fix blank tab area on load. */
-const VERSION = 'v1.17';
+   v1.17 = fix blank tab area on load.
+   v1.18 = read-only view codes and a Rivals tab. */
+const VERSION = 'v1.18';
 const CACHE = 'portfolios-' + VERSION;
 
 const SHELL = [
