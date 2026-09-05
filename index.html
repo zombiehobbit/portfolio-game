@@ -1,0 +1,1262 @@
+<link rel="manifest" href="./manifest.json">
+<meta name="theme-color" content="#E9ECE6">
+<meta name="mobile-web-app-capable" content="yes">
+<link rel="apple-touch-icon" href="./icon-192.png">
+<div id="root">
+  <div class="boot">Opening the ledger…</div>
+</div>
+
+<style>
+  :root {
+    --bg: #E9ECE6;
+    --surface: #FDFDFB;
+    --ink: #17201C;
+    --muted: #5F6B64;
+    --rule: #CBD2C9;
+    --pine: #2F6F62;
+    --brass: #8A6A2F;
+    --gain: #2E6B41;
+    --loss: #9C3A28;
+    --serif: Georgia, 'Iowan Old Style', 'Times New Roman', serif;
+    --sans: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+  }
+
+  * { box-sizing: border-box; }
+
+  #root {
+    font-family: var(--sans);
+    color: var(--ink);
+    background: var(--bg);
+    padding: 18px 14px 48px;
+    max-width: 720px;
+    margin: 0 auto;
+    overflow-x: hidden;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .boot { font-family: var(--serif); color: var(--muted); padding: 40px 0; text-align: center; }
+
+  h1 {
+    font-family: var(--serif);
+    font-size: 21px;
+    font-weight: normal;
+    margin: 0 0 2px;
+    letter-spacing: -0.01em;
+  }
+  .sub { font-size: 13px; color: var(--muted); margin: 0 0 20px; line-height: 1.5; }
+
+  /* ---- the race ---- */
+  .race { background: var(--surface); border: 1px solid var(--rule); padding: 18px 16px 14px; margin-bottom: 16px; }
+  .totals { display: flex; align-items: flex-start; }
+  .side { flex: 1 1 0; min-width: 0; }
+  .side.b { text-align: right; }
+  .side-name { font-size: 12px; color: var(--muted); margin-bottom: 3px; }
+  .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; vertical-align: middle; margin-right: 5px; }
+  .side.b .dot { margin: 0 0 0 5px; }
+  .big { font-family: var(--serif); font-size: clamp(21px, 6.4vw, 30px); line-height: 1.1; letter-spacing: -0.02em; }
+  .delta { font-size: 13px; margin-top: 2px; font-variant-numeric: tabular-nums; }
+  .divider { width: 1px; background: var(--rule); align-self: stretch; margin: 0 8px; flex: 0 0 1px; }
+
+  .track { position: relative; height: 34px; margin-top: 18px; }
+  .track-line { position: absolute; top: 16px; left: 0; right: 0; height: 2px; background: var(--rule); }
+  .marker { position: absolute; top: 10px; width: 14px; height: 14px; border-radius: 50%; border: 2px solid var(--surface); margin-left: -7px; transition: left .5s cubic-bezier(.22,.61,.36,1); }
+  .track-ends { display: flex; justify-content: space-between; font-size: 11px; color: var(--muted); margin-top: 4px; font-variant-numeric: tabular-nums; }
+
+  /* ---- tabs ---- */
+  .tabs { display: flex; gap: 0; border-bottom: 1px solid var(--rule); margin-bottom: 16px; }
+  .tab { flex: 1; background: none; border: none; border-bottom: 2px solid transparent; font-family: var(--sans); font-size: 14px; color: var(--muted); padding: 10px 4px; cursor: pointer; margin-bottom: -1px; }
+  .tab[aria-selected="true"] { color: var(--ink); border-bottom-color: var(--ink); }
+  .tab:focus-visible { outline: 2px solid var(--pine); outline-offset: -2px; }
+
+  /* ---- portfolios ---- */
+  .book { background: var(--surface); border: 1px solid var(--rule); margin-bottom: 14px; }
+  .book-head { padding: 12px 14px; border-bottom: 1px solid var(--rule); display: flex; justify-content: space-between; align-items: baseline; }
+  .book-title { font-family: var(--serif); font-size: 16px; }
+  .book-val { font-family: var(--serif); font-size: 16px; font-variant-numeric: tabular-nums; }
+
+  .pos { padding: 11px 14px; border-bottom: 1px solid var(--rule); display: flex; align-items: baseline; gap: 10px; cursor: pointer; }
+  .pos:last-of-type { border-bottom: none; }
+  .pos:hover { background: #F5F7F3; }
+  .pos-main { flex: 1; min-width: 0; }
+  .pos-name { font-size: 14px; }
+  .pos-tick { font-size: 11px; color: var(--muted); margin-top: 2px; font-variant-numeric: tabular-nums; }
+  .pos-right { text-align: right; font-variant-numeric: tabular-nums; }
+  .pos-val { font-family: var(--serif); font-size: 15px; }
+  .pos-pl { font-size: 11px; margin-top: 2px; }
+
+  .gain { color: var(--gain); }
+  .loss { color: var(--loss); }
+  .flat { color: var(--muted); }
+
+  .editor { padding: 12px 14px; background: #F2F5F0; border-bottom: 1px solid var(--rule); }
+  .field { margin-bottom: 10px; }
+  .field label { display: block; font-size: 12px; color: var(--muted); margin-bottom: 4px; }
+  input, select, textarea {
+    width: 100%; font-family: var(--sans); font-size: 15px; padding: 8px 9px;
+    border: 1px solid var(--rule); background: var(--surface); color: var(--ink); border-radius: 0;
+  }
+  input:focus, select:focus, textarea:focus { outline: 2px solid var(--pine); outline-offset: -1px; }
+  textarea { resize: vertical; min-height: 58px; line-height: 1.45; }
+  .row2 { display: flex; gap: 10px; }
+  .row2 .field { flex: 1; }
+
+  button.act { font-family: var(--sans); font-size: 13px; padding: 8px 14px; border: 1px solid var(--ink); background: var(--ink); color: var(--surface); cursor: pointer; }
+  button.act.ghost { background: none; color: var(--ink); }
+  button.act.warn { border-color: var(--loss); background: none; color: var(--loss); }
+  button.act:focus-visible { outline: 2px solid var(--pine); outline-offset: 2px; }
+  .btn-row { display: flex; gap: 8px; flex-wrap: wrap; }
+
+  .cash { padding: 10px 14px; border-top: 1px solid var(--rule); font-size: 13px; color: var(--muted); display: flex; justify-content: space-between; }
+  .cash strong { font-family: var(--serif); font-weight: normal; color: var(--ink); font-variant-numeric: tabular-nums; }
+
+  .addbar { padding: 10px 14px; border-top: 1px solid var(--rule); }
+
+  /* ---- log & diary ---- */
+  .entry { background: var(--surface); border: 1px solid var(--rule); padding: 12px 14px; margin-bottom: 10px; }
+  .entry-top { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; margin-bottom: 5px; }
+  .entry-what { font-size: 14px; }
+  .entry-when { font-size: 11px; color: var(--muted); white-space: nowrap; font-variant-numeric: tabular-nums; }
+  .entry-why { font-size: 13px; color: var(--muted); line-height: 1.5; }
+  .tag { font-size: 11px; padding: 2px 6px; border: 1px solid; display: inline-block; margin-right: 6px; }
+
+  .ev { display: flex; gap: 12px; padding: 12px 14px; background: var(--surface); border: 1px solid var(--rule); margin-bottom: 8px; align-items: baseline; }
+  .ev.done { opacity: .5; }
+  .ev-date { font-family: var(--serif); font-size: 13px; width: 62px; flex-shrink: 0; color: var(--muted); }
+  .ev-name { font-size: 14px; flex: 1; }
+  .ev-note { font-size: 12px; color: var(--muted); margin-top: 3px; line-height: 1.45; }
+
+  .empty { text-align: center; color: var(--muted); font-size: 13px; padding: 28px 20px; line-height: 1.6; background: var(--surface); border: 1px dashed var(--rule); }
+
+  .err { background: #FBEDE9; border: 1px solid var(--loss); color: var(--loss); padding: 10px 12px; font-size: 13px; margin-bottom: 12px; }
+  .hint { font-size: 12px; color: var(--muted); line-height: 1.5; margin: 0 0 14px; }
+
+  /* ---- prices & chart ---- */
+  .pricebar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 11px 14px; background: var(--surface); border: 1px solid var(--rule); border-top: none; margin: -16px 0 16px; }
+  .pricebar .note { font-size: 12px; color: var(--muted); flex: 1 1 100%; min-width: 0; line-height: 1.4; }
+  .pricebar button[disabled] { opacity: .5; cursor: progress; }
+
+  .review { background: var(--surface); border: 1px solid var(--rule); margin-bottom: 16px; }
+  .review-head { padding: 12px 14px; border-bottom: 1px solid var(--rule); font-size: 13px; color: var(--muted); line-height: 1.5; }
+  .review-row { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; padding: 9px 14px; border-bottom: 1px solid var(--rule); font-size: 14px; }
+  .review-row span:first-child { flex: 1 1 120px; min-width: 0; }
+  .review-move { font-variant-numeric: tabular-nums; font-family: var(--serif); }
+  .review-foot { padding: 12px 14px; display: flex; gap: 8px; }
+
+  .chart { background: var(--surface); border: 1px solid var(--rule); padding: 14px; margin-bottom: 16px; }
+  .chart svg { display: block; width: 100%; height: 130px; }
+  .chart-cap { font-size: 12px; color: var(--muted); margin-top: 8px; line-height: 1.45; }
+
+  .pos-main { flex: 1 1 auto; min-width: 0; }
+  .pos-name { overflow-wrap: anywhere; }
+  .track-ends span { white-space: nowrap; }
+
+  .update { background: var(--ink); color: var(--surface); padding: 11px 14px; margin-bottom: 14px; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; font-size: 13px; }
+  .update button { font-family: var(--sans); font-size: 13px; padding: 6px 12px; border: 1px solid var(--surface); background: none; color: var(--surface); cursor: pointer; }
+  .update span { flex: 1 1 auto; min-width: 0; }
+
+  @media (prefers-reduced-motion: reduce) { .marker { transition: none; } }
+</style>
+
+<script>
+(function () {
+  var KEY = 'wargame-v1';
+  var root = document.getElementById('root');
+  var state = null;
+  var view = 'books';
+  var openPos = null;   // "book:id"
+  var adding = null;    // book key
+  var error = null;
+  var busy = false;
+  var cancelled = false;
+  var showKey = false;
+  var showExport = false;
+  var selling = null;    // "book:id"
+  var topping = null;    // "book:id"
+  var importing = null;  // book key
+  var updateReady = false;
+  var waitingWorker = null;
+  var running = null;
+
+  if (window.caches && caches.keys) {
+    caches.keys().then(function (ks) {
+      var hit = ks.filter(function (k) { return k.indexOf('portfolios-') === 0; })[0];
+      if (hit) { running = hit.replace('portfolios-', ''); if (state) render(); }
+    }).catch(function () {});
+  }
+
+  if ('serviceWorker' in navigator && location.protocol.indexOf('http') === 0) {
+    navigator.serviceWorker.register('./sw.js').then(function (reg) {
+      if (reg.waiting) { waitingWorker = reg.waiting; updateReady = true; if (state) render(); }
+      reg.addEventListener('updatefound', function () {
+        var nw = reg.installing;
+        if (!nw) return;
+        nw.addEventListener('statechange', function () {
+          if (nw.state === 'installed' && navigator.serviceWorker.controller) {
+            waitingWorker = nw; updateReady = true; if (state) render();
+          }
+        });
+      });
+    }).catch(function () { /* not served over http, or blocked */ });
+
+    var reloading = false;
+    navigator.serviceWorker.addEventListener('controllerchange', function () {
+      if (reloading) return;
+      reloading = true;
+      location.reload();
+    });
+  }
+  var pending = null;   // { TICKER: price } awaiting review
+  var fetchNote = null;
+
+  function seed() {
+    return {
+      start: '2026-09-07',
+      finish: '2027-03-05',
+      history: [],
+      prior: [],
+      avKey: '',
+      avUsage: { date: '', n: 0 },
+      books: {
+        screened: {
+          name: 'Screened', color: 'var(--pine)', cash: 0,
+          positions: [
+            p('iShares Physical Gold', 'SGLN', 90),
+            p('Shell', 'SHEL', 60),
+            p('Taylor Wimpey', 'TW.', 90),
+            p('Lloyds', 'LLOY', 90),
+            p('Greggs', 'GRG', 70),
+            p('easyJet', 'EZJ', 50),
+            p('Frontier Developments', 'FDEV', 50)
+          ]
+        },
+        defence: {
+          name: 'Defence', color: 'var(--brass)', cash: 0,
+          positions: [
+            p('BAE Systems', 'BA.', 120),
+            p('Chemring', 'CHG', 110),
+            p('Babcock', 'BAB', 100),
+            p('Cohort', 'CHRT', 70),
+            p('QinetiQ', 'QQ.', 50),
+            p('Avon Technologies', 'AVON', 50)
+          ]
+        }
+      },
+      trades: [],
+      events: [
+        ev('2026-09-07', 'Opening prices', 'Enter the Monday close for every holding. This is the start line.'),
+        ev('2026-09-17', 'Bank of England decision', 'Held at 3.75% since December, last vote 6-3 with three wanting a rise.'),
+        ev('2026-09-21', 'easyJet joins the FTSE 100', 'Index trackers become forced buyers at the open.'),
+        ev('2026-09-30', 'Greggs Q3 update', 'Watch like-for-likes. Above 2% and the valuation case holds.'),
+        ev('2026-10-28', 'Autumn Budget', 'Healey\u2019s first. The day the two portfolios pull apart.'),
+        ev('2027-03-05', 'Final scoring', 'Six months. Did either one double?')
+      ]
+    };
+  }
+
+  function p(name, ticker, cost) {
+    return { id: uid(), name: name, ticker: ticker, cost: cost, entry: null, now: null };
+  }
+  function ev(date, name, note) { return { id: uid(), date: date, name: name, note: note, done: false }; }
+  function uid() { return Math.random().toString(36).slice(2, 9); }
+
+  /* ---------- storage ---------- */
+
+  function inClaude() {
+    return typeof window.storage === 'object' && window.storage && typeof window.storage.get === 'function';
+  }
+
+  var memory = {};
+
+  var store = {
+    get: async function (k) {
+      if (inClaude()) {
+        var r = await window.storage.get(k);
+        return r && r.value ? r.value : null;
+      }
+      try { return window.localStorage.getItem(k); } catch (e) { return memory[k] || null; }
+    },
+    set: async function (k, v) {
+      if (inClaude()) { await window.storage.set(k, v); return; }
+      try { window.localStorage.setItem(k, v); } catch (e) { memory[k] = v; }
+    }
+  };
+
+  async function load() {
+    try {
+      var raw = await store.get(KEY);
+      state = raw ? JSON.parse(raw) : seed();
+    } catch (e) {
+      state = seed();
+    }
+    if (!state.history) state.history = [];
+    if (!state.prior) state.prior = [];
+    if (typeof state.avKey !== 'string') state.avKey = '';
+    if (!state.avUsage) state.avUsage = { date: '', n: 0 };
+    if (!inClaude() && !state.avKey) {
+      fetchNote = 'Running outside Claude. Add an Alpha Vantage key and prices work here too \u2014 without one there\u2019s no way to fetch them.';
+    }
+    render();
+  }
+
+  async function save() {
+    try {
+      await store.set(KEY, JSON.stringify(state));
+      error = null;
+    } catch (e) {
+      error = 'Could not save. Your last change is on screen but not stored — try again in a moment.';
+      render();
+    }
+  }
+
+  /* ---------- maths ---------- */
+
+  function posValue(pos) {
+    if (pos.entry && pos.now && pos.entry > 0) return pos.cost * (pos.now / pos.entry);
+    return pos.cost;
+  }
+  function bookValue(b) {
+    return b.positions.reduce(function (s, x) { return s + posValue(x); }, 0) + b.cash;
+  }
+  function money(n) {
+    return '\u00A3' + n.toLocaleString('en-GB', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  }
+  function pct(n) { return (n >= 0 ? '+' : '') + n.toFixed(1) + '%'; }
+  function cls(n) { return n > 0.001 ? 'gain' : n < -0.001 ? 'loss' : 'flat'; }
+  function esc(s) {
+    return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
+      return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+    });
+  }
+  function today() { return new Date().toISOString().slice(0, 10); }
+  function niceDate(d) {
+    var m = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    var parts = d.split('-');
+    return parseInt(parts[2], 10) + ' ' + m[parseInt(parts[1], 10) - 1];
+  }
+
+  /* ---------- render ---------- */
+
+  function render() {
+    var s = bookValue(state.books.screened);
+    var d = bookValue(state.books.defence);
+
+    var html = '';
+    html += '<h1>' + esc(state.books.screened.name) + ' versus ' + esc(state.books.defence.name) + '</h1>';
+    html += '<p class="sub">Two fictional \u00A3500 portfolios, same start line. Six months to double.</p>';
+    if (updateReady) {
+      html += '<div class="update"><span>A new version is ready.</span>'
+        + '<button data-update="1">Reload</button></div>';
+    }
+    if (error) html += '<div class="err">' + esc(error) + '</div>';
+
+    html += race(s, d);
+    html += priceBar();
+    if (pending) html += reviewPanel();
+    html += chart();
+
+    html += '<div class="tabs" role="tablist">';
+    html += tab('books', 'Holdings');
+    html += tab('trades', 'Trades');
+    html += tab('diary', 'Diary');
+    html += '</div>';
+
+    if (view === 'books') html += renderBook('screened') + renderBook('defence');
+    if (view === 'trades') html += renderTrades();
+    if (view === 'diary') html += renderDiary();
+
+    root.innerHTML = html;
+    wire();
+  }
+
+  function race(s, d) {
+    function posOf(v) { return Math.max(0, Math.min(100, (v - 400) / 6)); } // £400–£1000
+    var h = '<div class="race"><div class="totals">';
+    h += '<div class="side"><div class="side-name"><span class="dot" style="background:var(--pine)"></span>Screened</div>'
+       + '<div class="big">' + money(s) + '</div>'
+       + '<div class="delta ' + cls(s - 500) + '">' + pct((s - 500) / 5) + '</div></div>';
+    h += '<div class="divider"></div>';
+    h += '<div class="side b"><div class="side-name">Defence<span class="dot" style="background:var(--brass)"></span></div>'
+       + '<div class="big">' + money(d) + '</div>'
+       + '<div class="delta ' + cls(d - 500) + '">' + pct((d - 500) / 5) + '</div></div>';
+    h += '</div>';
+    h += '<div class="track"><div class="track-line"></div>'
+       + '<div class="marker" style="left:' + posOf(s) + '%;background:var(--pine)"></div>'
+       + '<div class="marker" style="left:' + posOf(d) + '%;background:var(--brass)"></div></div>';
+    h += '<div class="track-ends"><span>\u00A3400</span><span>\u00A3500 start</span><span>\u00A31,000 target</span></div>';
+    h += '</div>';
+    return h;
+  }
+
+  function tab(id, label) {
+    return '<button class="tab" role="tab" data-tab="' + id + '" aria-selected="' + (view === id) + '">' + label + '</button>';
+  }
+
+  function renderBook(key) {
+    var b = state.books[key];
+    var v = bookValue(b);
+    var h = '<div class="book">';
+    h += '<div class="book-head"><span class="book-title" style="color:' + b.color + '">' + esc(b.name) + '</span>'
+       + '<span class="book-val">' + money(v) + '</span></div>';
+
+    if (!b.positions.length) {
+      h += '<div class="empty" style="border:none">Nothing held. Add a position below.</div>';
+    }
+
+    b.positions.forEach(function (pos) {
+      var val = posValue(pos);
+      var pl = val - pos.cost;
+      var priced = pos.entry && pos.now;
+      h += '<div class="pos" data-pos="' + key + ':' + pos.id + '" tabindex="0" role="button">';
+      h += '<div class="pos-main"><div class="pos-name">' + esc(pos.name) + '</div>';
+      h += '<div class="pos-tick">' + esc(pos.ticker) + (priced ? ' \u00B7 ' + pos.entry + 'p \u2192 ' + pos.now + 'p' : ' \u00B7 no price yet') + '</div></div>';
+      h += '<div class="pos-right"><div class="pos-val">' + money(val) + '</div>';
+      h += '<div class="pos-pl ' + cls(pl) + '">' + (priced ? pct(pl / pos.cost * 100) : 'cost ' + money(pos.cost)) + '</div></div>';
+      h += '</div>';
+      if (openPos === key + ':' + pos.id) h += editor(key, pos);
+    });
+
+    h += '<div class="cash"><span>Cash</span><strong>' + money(b.cash) + '</strong></div>';
+
+    if (adding === key) {
+      h += addForm(key);
+    } else if (importing === key) {
+      h += importForm(key);
+    } else {
+      h += '<div class="addbar"><button class="act ghost" data-add="' + key + '">Add a position</button> '
+        + '<button class="act ghost" data-import="' + key + '">Paste a list</button></div>';
+    }
+    h += '</div>';
+    return h;
+  }
+
+  function editor(key, pos) {
+    var h = '<div class="editor">';
+    h += '<div class="row2">';
+    h += '<div class="field"><label for="e-' + pos.id + '">Entry price (pence)</label>'
+       + '<input id="e-' + pos.id + '" type="number" step="0.01" inputmode="decimal" value="' + (pos.entry || '') + '"></div>';
+    h += '<div class="field"><label for="n-' + pos.id + '">Price now (pence)</label>'
+       + '<input id="n-' + pos.id + '" type="number" step="0.01" inputmode="decimal" value="' + (pos.now || '') + '"></div>';
+    h += '</div>';
+    h += '<div class="field"><label for="s-' + pos.id + '">Data symbol</label>'
+       + '<input id="s-' + pos.id + '" value="' + esc(avSymbol(pos)) + '" autocomplete="off"></div>';
+    h += '<div class="btn-row"><button class="act" data-save="' + key + ':' + pos.id + '">Save</button>'
+       + '<button class="act ghost" data-close="1">Close</button>'
+       + '<button class="act ghost" data-top="' + key + ':' + pos.id + '">Buy more</button>'
+       + '<button class="act warn" data-sellform="' + key + ':' + pos.id + '">Sell</button></div>';
+
+    if (selling === key + ':' + pos.id) {
+      var val = posValue(pos);
+      h += '<div style="margin-top:12px;padding-top:12px;border-top:1px solid var(--rule)">';
+      h += '<div class="field"><label for="sa-' + pos.id + '">How much to sell (\u00a3)</label>'
+        + '<input id="sa-' + pos.id + '" type="number" step="0.01" inputmode="decimal" value="'
+        + val.toFixed(2) + '"></div>';
+      h += '<div class="field"><label for="sw-' + pos.id + '">Why</label>'
+        + '<textarea id="sw-' + pos.id + '" placeholder="What changed?"></textarea></div>';
+      h += '<p class="hint">Worth ' + money(val) + '. Sell less than that to trim rather than close.</p>';
+      h += '<div class="btn-row"><button class="act warn" data-sell="' + key + ':' + pos.id + '">Confirm sale</button>'
+        + '<button class="act ghost" data-nosell="1">Cancel</button></div>';
+      h += '</div>';
+    }
+
+    if (topping === key + ':' + pos.id) {
+      h += '<div style="margin-top:12px;padding-top:12px;border-top:1px solid var(--rule)">';
+      h += '<div class="field"><label for="ta-' + pos.id + '">How much to add (\u00a3)</label>'
+        + '<input id="ta-' + pos.id + '" type="number" step="1" inputmode="decimal" placeholder="25"></div>';
+      h += '<div class="field"><label for="tw-' + pos.id + '">Why</label>'
+        + '<textarea id="tw-' + pos.id + '" placeholder="What changed?"></textarea></div>';
+      h += '<p class="hint">Cash available: ' + money(state.books[key].cash) + '.</p>';
+      h += '<div class="btn-row"><button class="act" data-topgo="' + key + ':' + pos.id + '">Confirm</button>'
+        + '<button class="act ghost" data-notop="1">Cancel</button></div>';
+      h += '</div>';
+    }
+    h += '</div>';
+    return h;
+  }
+
+  function importForm(key) {
+    var b = state.books[key];
+    var h = '<div class="editor">';
+    h += '<div class="field"><label for="imp">One per line: name, ticker, amount</label>'
+      + '<textarea id="imp" rows="7" placeholder="Rolls-Royce, RR., 90&#10;Halfords, HFD, 40&#10;Frasers Group, FRAS, 60"></textarea></div>';
+    h += '<div class="field"><label for="impwhy">Why these</label>'
+      + '<textarea id="impwhy" placeholder="The thinking behind the whole batch"></textarea></div>';
+    h += '<p class="hint">Leave prices out. Refresh data fills them in and sets the entry. '
+      + 'Cash available: ' + money(b.cash) + '.</p>';
+    h += '<div class="btn-row"><button class="act" data-importgo="' + key + '">Add them</button>'
+      + '<button class="act ghost" data-noimport="1">Cancel</button></div>';
+    h += '</div>';
+    return h;
+  }
+
+  function parseList(text) {
+    var out = [];
+    text.split('\n').forEach(function (line) {
+      line = line.trim();
+      if (!line) return;
+      var parts = line.split(',').map(function (x) { return x.trim(); });
+      if (parts.length < 3) return;
+      var amount = parseFloat(parts[2].replace(/[^0-9.]/g, ''));
+      if (!parts[0] || !parts[1] || !isFinite(amount) || amount <= 0) return;
+      out.push({ name: parts[0], ticker: parts[1], cost: amount });
+    });
+    return out;
+  }
+
+  function addForm(key) {
+    var b = state.books[key];
+    var h = '<div class="editor">';
+    h += '<div class="field"><label for="a-name">Company</label><input id="a-name" placeholder="Rolls-Royce"></div>';
+    h += '<div class="row2">';
+    h += '<div class="field"><label for="a-tick">Ticker</label><input id="a-tick" placeholder="RR."></div>';
+    h += '<div class="field"><label for="a-cost">Amount (\u00A3)</label><input id="a-cost" type="number" step="1" inputmode="decimal" placeholder="50"></div>';
+    h += '</div>';
+    h += '<div class="field"><label for="a-entry">Entry price (pence)</label><input id="a-entry" type="number" step="0.01" inputmode="decimal"></div>';
+    h += '<div class="field"><label for="a-why">Why now</label><textarea id="a-why" placeholder="What changed that made this worth buying?"></textarea></div>';
+    h += '<p class="hint">Cash available: ' + money(b.cash) + '. Buying more than that adds new money, which the log will record.</p>';
+    h += '<div class="btn-row"><button class="act" data-buy="' + key + '">Buy</button>'
+       + '<button class="act ghost" data-cancel="1">Cancel</button></div>';
+    h += '</div>';
+    return h;
+  }
+
+  function renderTrades() {
+    if (!state.trades.length) {
+      return '<div class="empty">No trades yet.<br>Every buy and sell lands here with the reason attached, so you can see later which calls were judgement and which were luck.</div>';
+    }
+    return state.trades.map(function (t) {
+      var col = t.book === 'screened' ? 'var(--pine)' : 'var(--brass)';
+      var h = '<div class="entry">';
+      h += '<div class="entry-top"><span class="entry-what">'
+         + '<span class="tag" style="color:' + col + ';border-color:' + col + '">' + esc(state.books[t.book].name) + '</span>'
+         + esc(t.action) + ' ' + esc(t.name) + ' \u00B7 ' + money(t.amount) + '</span>'
+         + '<span class="entry-when">' + niceDate(t.date) + '</span></div>';
+      if (t.why) h += '<div class="entry-why">' + esc(t.why) + '</div>';
+      h += '</div>';
+      return h;
+    }).join('');
+  }
+
+  function renderDiary() {
+    var h = '<p class="hint">Dated events worth watching. Tap one to mark it done once you know the outcome.</p>';
+    h += state.events.slice().sort(function (a, b) { return a.date < b.date ? -1 : 1; }).map(function (e) {
+      return '<div class="ev' + (e.done ? ' done' : '') + '" data-ev="' + e.id + '" tabindex="0" role="button">'
+        + '<div class="ev-date">' + niceDate(e.date) + '</div>'
+        + '<div><div class="ev-name">' + esc(e.name) + '</div>'
+        + (e.note ? '<div class="ev-note">' + esc(e.note) + '</div>' : '') + '</div></div>';
+    }).join('');
+    return h;
+  }
+
+  /* ---------- prices from the web ---------- */
+
+  function allPositions() {
+    return state.books.screened.positions.concat(state.books.defence.positions);
+  }
+
+  function priceBar() {
+    var last = state.history.length ? state.history[state.history.length - 1].date : null;
+    var left = budgetLeft();
+    var h = '<div class="pricebar">';
+
+    if (state.avKey) {
+      h += '<button class="act" data-alpha="1"' + (busy ? ' disabled' : '') + '>'
+         + (busy ? 'Working\u2026' : 'Refresh data') + '</button>';
+    }
+    if (inClaude()) {
+      h += '<button class="act' + (state.avKey ? ' ghost' : '') + '" data-fetch="1"' + (busy ? ' disabled' : '') + '>'
+         + (busy ? 'Looking\u2026' : state.avKey ? 'Search instead' : 'Update prices') + '</button>';
+      if (!state.prior.length && !state.avKey) {
+        h += '<button class="act ghost" data-back="1"' + (busy ? ' disabled' : '') + '>Add last month</button>';
+      }
+    }
+    h += '<button class="act ghost" data-key="1">Settings</button>';
+    h += '<button class="act ghost" data-export="1">Copy snapshot</button>';
+
+    var note = fetchNote;
+    if (!note) {
+      if (state.avKey) note = 'Alpha Vantage: ' + left + ' of 25 calls left today. A full refresh uses 13 and takes about three minutes.';
+      else if (last) note = 'Last updated ' + niceDate(last) + '.';
+      else note = 'Fetches the latest published price for every holding.';
+    }
+    h += '<span class="note">' + esc(note) + '</span>';
+
+    if (showKey) {
+      h += '<div style="flex:1 1 100%">';
+      h += '<div class="field" style="margin:8px 0 0"><label for="avk">Alpha Vantage key</label>'
+        + '<input id="avk" value="' + esc(state.avKey) + '" placeholder="Paste your free key" autocomplete="off"></div>';
+      h += '<div class="row2">'
+        + '<div class="field"><label for="n-a">First portfolio</label>'
+        + '<input id="n-a" value="' + esc(state.books.screened.name) + '"></div>'
+        + '<div class="field"><label for="n-b">Second portfolio</label>'
+        + '<input id="n-b" value="' + esc(state.books.defence.name) + '"></div></div>';
+      h += '<div class="btn-row"><button class="act" data-savekey="1">Save</button>'
+        + '<button class="act ghost" data-hidekey="1">Close</button>'
+        + '<button class="act warn" data-reset="1">Clear and start fresh</button></div>';
+      h += '<p class="hint" style="margin-top:10px">Your key stays on this device and never appears in the chat. '
+        + 'Clearing empties both portfolios to \u00a3500 cash each so you can pick your own \u2014 it can\u2019t be undone.'
+        + (running ? '<br>Running version ' + esc(running) + '.' : '') + '</p>';
+      h += '</div>';
+    }
+    if (showExport) {
+      h += '<div style="flex:1 1 100%"><div class="field" style="margin:8px 0 0">'
+        + '<label for="snap">Snapshot to paste into the chat</label>'
+        + '<textarea id="snap" rows="10" readonly style="font-family:ui-monospace,Menlo,Consolas,monospace;font-size:12px">'
+        + esc(snapshotText()) + '</textarea></div>'
+        + '<div class="btn-row"><button class="act" data-copy="1">Copy</button>'
+        + '<button class="act ghost" data-hideexport="1">Close</button></div>'
+        + '<p class="hint" style="margin-top:10px">Paste this to Claude at each catch-up. '
+        + 'It carries no key and nothing personal.</p></div>';
+    }
+    h += '</div>';
+    return h;
+  }
+
+  function snapshotText() {
+    var s = bookValue(state.books.screened);
+    var d = bookValue(state.books.defence);
+    var out = [];
+    out.push('Tracker snapshot ' + niceDate(today()));
+    out.push('Screened ' + money(s) + ' (' + pct((s - 500) / 5) + ')  |  Defence '
+      + money(d) + ' (' + pct((d - 500) / 5) + ')');
+
+    ['screened', 'defence'].forEach(function (key) {
+      var b = state.books[key];
+      out.push('');
+      out.push(b.name.toUpperCase());
+      b.positions.forEach(function (p) {
+        var val = posValue(p);
+        var move = p.entry && p.now ? pct((p.now - p.entry) / p.entry * 100) : 'no price';
+        out.push(p.ticker + '  ' + (p.entry || '?') + ' > ' + (p.now || '?') + 'p  '
+          + move + '  ' + money(val));
+      });
+      if (b.cash > 0) out.push('cash ' + money(b.cash));
+    });
+
+    if (state.trades.length) {
+      out.push('');
+      out.push('TRADES');
+      state.trades.slice(0, 8).forEach(function (t) {
+        out.push(niceDate(t.date) + ' ' + state.books[t.book].name + ': ' + t.action + ' '
+          + t.name + ' ' + money(t.amount) + (t.why ? ' — ' + t.why : ''));
+      });
+    }
+    return out.join('\n');
+  }
+
+  function budgetLeft() {
+    var u = state.avUsage;
+    if (u.date !== today()) return 25;
+    return Math.max(0, 25 - u.n);
+  }
+
+  function spend(n) {
+    if (state.avUsage.date !== today()) state.avUsage = { date: today(), n: 0 };
+    state.avUsage.n += n;
+  }
+
+  function avSymbol(p) {
+    return (p.sym && p.sym.trim()) || p.ticker.replace(/\.$/, '') + '.LON';
+  }
+
+  function sleep(ms) { return new Promise(function (r) { setTimeout(r, ms); }); }
+
+  async function fetchAlpha() {
+    var positions = allPositions();
+    if (budgetLeft() < positions.length) {
+      error = 'Only ' + budgetLeft() + ' calls left today and this needs ' + positions.length
+        + '. The free allowance resets tomorrow \u2014 use the search fallback in the meantime.';
+      render(); return;
+    }
+
+    busy = true; error = null; pending = null; cancelled = false; render();
+
+    var closes = {};   // symbol -> { date: close }
+    var got = 0, dead = [];
+
+    for (var i = 0; i < positions.length; i++) {
+      if (cancelled) break;
+      var p = positions[i];
+      fetchNote = 'Fetching ' + p.name + ' (' + (i + 1) + ' of ' + positions.length + ')\u2026';
+      render();
+
+      try {
+        var url = 'https://www.alphavantage.co/query?function=TIME_SERIES_DAILY&symbol='
+          + encodeURIComponent(avSymbol(p)) + '&outputsize=compact&apikey=' + encodeURIComponent(state.avKey);
+        var res = await fetch(url);
+        var j = await res.json();
+        spend(1);
+
+        if (j['Note'] || j['Information']) {
+          error = 'Alpha Vantage stopped us: ' + (j['Note'] || j['Information']);
+          break;
+        }
+        var ts = j['Time Series (Daily)'];
+        if (ts) {
+          var m = {};
+          Object.keys(ts).forEach(function (d) { m[d] = parseFloat(ts[d]['4. close']); });
+          closes[p.id] = m;
+          got++;
+        } else {
+          dead.push(p.ticker);
+        }
+      } catch (e) {
+        dead.push(p.ticker);
+      }
+
+      if (i < positions.length - 1 && !cancelled) await sleep(13000);
+    }
+
+    if (got) {
+      // Current prices go to review.
+      var clean = {}, n = 0;
+      positions.forEach(function (p) {
+        var m = closes[p.id];
+        if (!m) return;
+        var days = Object.keys(m).sort();
+        var v = m[days[days.length - 1]];
+        if (isFinite(v) && v > 0) { clean[p.ticker] = v; n++; }
+      });
+      if (n) pending = clean;
+
+      buildPriorFromCloses(closes, positions);
+
+      fetchNote = 'Got ' + got + ' of ' + positions.length + '.'
+        + (dead.length ? ' No data for ' + dead.join(', ') + ' \u2014 try editing their symbols.' : '')
+        + ' ' + budgetLeft() + ' calls left today.';
+    } else if (!error) {
+      error = 'Nothing came back. Either the symbols need the .LON form checking, or the request was blocked.';
+    }
+
+    busy = false;
+    save(); render();
+  }
+
+  function buildPriorFromCloses(closes, positions) {
+    // Use the trading days every covered holding shares, most recent 30.
+    var sets = Object.keys(closes).map(function (id) { return Object.keys(closes[id]); });
+    if (!sets.length) return;
+    var common = sets[0].filter(function (d) {
+      return sets.every(function (s) { return s.indexOf(d) !== -1; });
+    }).sort();
+    common = common.slice(-30);
+    if (common.length < 2) return;
+
+    var rows = common.map(function (d) { return { date: d, s: 0, d: 0 }; });
+
+    ['screened', 'defence'].forEach(function (key) {
+      var slot = key === 'screened' ? 's' : 'd';
+      state.books[key].positions.forEach(function (p) {
+        var m = closes[p.id];
+        var last = m ? m[common[common.length - 1]] : null;
+        for (var w = 0; w < common.length; w++) {
+          rows[w][slot] += (m && last) ? p.cost * (m[common[w]] / last) : p.cost;
+        }
+      });
+    });
+
+    state.prior = rows;
+  }
+
+  function chunk(arr, n) {
+    var out = [];
+    for (var i = 0; i < arr.length; i += n) out.push(arr.slice(i, i + n));
+    return out;
+  }
+
+  async function askClaude(prompt) {
+    var res = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model: 'claude-sonnet-4-6',
+        max_tokens: 1000,
+        messages: [{ role: 'user', content: prompt }],
+        tools: [{ type: 'web_search_20250305', name: 'web_search' }]
+      })
+    });
+    if (!res.ok) throw new Error('http ' + res.status);
+    var data = await res.json();
+    var text = (data.content || [])
+      .filter(function (b) { return b.type === 'text'; })
+      .map(function (b) { return b.text; }).join('\n');
+    var a = text.indexOf('{'), z = text.lastIndexOf('}');
+    if (a === -1 || z === -1) throw new Error('no json');
+    return JSON.parse(text.slice(a, z + 1));
+  }
+
+  async function fetchPrices() {
+    busy = true; fetchNote = null; error = null; pending = null; render();
+
+    var groups = chunk(allPositions(), 3);
+    var found = {}, failed = 0;
+
+    for (var i = 0; i < groups.length; i++) {
+      fetchNote = 'Looking up batch ' + (i + 1) + ' of ' + groups.length + '\u2026';
+      render();
+      var list = groups[i].map(function (p) { return p.ticker + ' (' + p.name + ')'; }).join(', ');
+      try {
+        var r = await askClaude(
+          'Find the most recent published share price for these London Stock Exchange holdings: ' + list + '. '
+          + 'Use the latest close or delayed quote. Reply with only a JSON object mapping each ticker exactly as given '
+          + 'to its price in pence as a number. No other text. Omit any you cannot find.');
+        Object.keys(r).forEach(function (k) { found[k] = r[k]; });
+      } catch (e) {
+        failed++;
+      }
+    }
+
+    var clean = {}, n = 0;
+    allPositions().forEach(function (p) {
+      var v = found[p.ticker];
+      if (typeof v === 'number' && isFinite(v) && v > 0) { clean[p.ticker] = v; n++; }
+    });
+
+    if (n) {
+      pending = clean;
+      fetchNote = 'Found ' + n + ' of ' + allPositions().length + '. Check them before accepting.';
+    } else {
+      fetchNote = null;
+      error = failed === groups.length
+        ? 'No response from the lookup. If this is open outside Claude that\u2019s expected \u2014 otherwise try again shortly.'
+        : 'Nothing usable came back. Try again, or enter prices by hand from any share price page.';
+    }
+    busy = false;
+    render();
+  }
+
+  function reviewPanel() {
+    var h = '<div class="review">';
+    h += '<div class="review-head">These came from a web search, not a market feed. They may be delayed, and gold trades in dollars so check that one. Edit anything that looks wrong after accepting.</div>';
+    allPositions().forEach(function (p) {
+      var np = pending[p.ticker];
+      if (np == null) return;
+      var move = p.now ? ((np - p.now) / p.now * 100) : null;
+      h += '<div class="review-row"><span>' + esc(p.name) + '</span>'
+         + '<span class="review-move">' + (p.now ? p.now + 'p \u2192 ' : '') + np + 'p</span>'
+         + (move != null ? '<span class="' + cls(move) + '" style="font-size:12px">' + pct(move) + '</span>' : '')
+         + '</div>';
+    });
+    h += '<div class="review-foot"><button class="act" data-accept="1">Accept</button>'
+       + '<button class="act ghost" data-discard="1">Discard</button></div>';
+    h += '</div>';
+    return h;
+  }
+
+  function acceptPrices() {
+    allPositions().forEach(function (p) {
+      var np = pending[p.ticker];
+      if (np == null) return;
+      if (!p.entry) p.entry = np;
+      p.now = np;
+    });
+    pending = null;
+    snapshot();
+    fetchNote = 'Prices updated and banked.';
+    save(); render();
+  }
+
+  function snapshot() {
+    var d = today();
+    var pt = { date: d, s: bookValue(state.books.screened), d: bookValue(state.books.defence) };
+    var i = state.history.findIndex(function (x) { return x.date === d; });
+    if (i >= 0) state.history[i] = pt; else state.history.push(pt);
+  }
+
+  /* ---------- last month's shape ---------- */
+
+  async function fetchHistory() {
+    busy = true; fetchNote = null; error = null; render();
+
+    var groups = chunk(allPositions(), 3);
+    var series = {}, failed = 0;
+
+    for (var i = 0; i < groups.length; i++) {
+      fetchNote = 'Rebuilding batch ' + (i + 1) + ' of ' + groups.length + '\u2026';
+      render();
+      var list = groups[i].map(function (p) { return p.ticker + ' (' + p.name + ')'; }).join(', ');
+      try {
+        var r = await askClaude(
+          'For these London Stock Exchange shares: ' + list + ' \u2014 find the closing price one month ago, '
+          + 'two weeks ago, and the latest price. Reply with only a JSON object mapping each ticker exactly as given '
+          + 'to an array of three numbers in pence, oldest first. No other text. Omit any you cannot find.');
+        Object.keys(r).forEach(function (k) { series[k] = r[k]; });
+      } catch (e) {
+        failed++;
+      }
+    }
+
+    var rows = [
+      { date: weekDate(4), s: 0, d: 0 },
+      { date: weekDate(2), s: 0, d: 0 },
+      { date: state.start, s: 0, d: 0 }
+    ];
+    var covered = 0;
+
+    ['screened', 'defence'].forEach(function (key) {
+      var slot = key === 'screened' ? 's' : 'd';
+      state.books[key].positions.forEach(function (p) {
+        var arr = series[p.ticker];
+        var ok = Array.isArray(arr) && arr.length === 3 && arr.every(function (n) {
+          return typeof n === 'number' && isFinite(n) && n > 0;
+        });
+        if (ok) covered++;
+        for (var w = 0; w < 3; w++) {
+          rows[w][slot] += ok ? p.cost * (arr[w] / arr[2]) : p.cost;
+        }
+      });
+    });
+
+    if (covered) {
+      state.prior = rows;
+      fetchNote = 'Last month added from ' + covered + ' of ' + allPositions().length
+        + ' holdings. Context only \u2014 it doesn\u2019t touch the score.';
+      save();
+    } else {
+      fetchNote = null;
+      error = failed === groups.length
+        ? 'No response from the lookup. If this is open outside Claude that\u2019s expected \u2014 otherwise try again shortly.'
+        : 'Historic prices came back unusable. They\u2019re patchier than current ones \u2014 worth another go.';
+    }
+    busy = false;
+    render();
+  }
+
+  function weekDate(weeksAgo) {
+    var d = new Date(state.start + 'T00:00:00');
+    d.setDate(d.getDate() - weeksAgo * 7);
+    return d.toISOString().slice(0, 10);
+  }
+
+  /* ---------- chart ---------- */
+
+  function chart() {
+    var prior = state.prior || [];
+    var live = state.history || [];
+    var all = prior.concat(live);
+
+    if (all.length < 2) {
+      return '<div class="chart"><div class="empty" style="border:none;padding:18px 8px">'
+        + 'Nothing to plot yet. Add last month for context, or update prices twice to start the line.'
+        + '</div></div>';
+    }
+
+    var vals = [];
+    all.forEach(function (p) { vals.push(p.s, p.d); });
+    var lo = Math.min.apply(null, vals), hi = Math.max.apply(null, vals);
+    var pad = Math.max(10, (hi - lo) * 0.15);
+    lo -= pad; hi += pad;
+    var W = 300, H = 130;
+
+    function xy(p, i) {
+      var x = (i / (all.length - 1)) * W;
+      var y = H - ((p[key] - lo) / (hi - lo)) * H;
+      return x.toFixed(1) + ',' + y.toFixed(1);
+    }
+    var key;
+
+    function seg(k, from, to, colour, dashed) {
+      key = k;
+      var pts = [];
+      for (var i = from; i <= to && i < all.length; i++) pts.push(xy(all[i], i));
+      if (pts.length < 2) return '';
+      return '<polyline points="' + pts.join(' ') + '" fill="none" stroke="' + colour + '" stroke-width="2" '
+        + 'stroke-linejoin="round" stroke-linecap="round" vector-effect="non-scaling-stroke"'
+        + (dashed ? ' stroke-dasharray="4 3" opacity="0.55"' : '') + '/>';
+    }
+
+    var split = prior.length ? prior.length - 1 : 0;
+    var baseY = H - ((500 - lo) / (hi - lo)) * H;
+
+    var h = '<div class="chart"><svg viewBox="0 0 ' + W + ' ' + H + '" preserveAspectRatio="none" role="img" '
+      + 'aria-label="Both portfolios plotted over time against the 500 pound start line">';
+    if (baseY > 0 && baseY < H) {
+      h += '<line x1="0" y1="' + baseY.toFixed(1) + '" x2="' + W + '" y2="' + baseY.toFixed(1)
+         + '" stroke="var(--rule)" stroke-width="1" stroke-dasharray="3 3" vector-effect="non-scaling-stroke"/>';
+    }
+    if (prior.length && live.length) {
+      var sx = ((split) / (all.length - 1)) * W;
+      h += '<line x1="' + sx.toFixed(1) + '" y1="0" x2="' + sx.toFixed(1) + '" y2="' + H
+         + '" stroke="var(--rule)" stroke-width="1" vector-effect="non-scaling-stroke"/>';
+    }
+    if (prior.length > 1) {
+      h += seg('s', 0, split, 'var(--pine)', true);
+      h += seg('d', 0, split, 'var(--brass)', true);
+    }
+    if (live.length) {
+      h += seg('s', split, all.length - 1, 'var(--pine)', false);
+      h += seg('d', split, all.length - 1, 'var(--brass)', false);
+    }
+    h += '</svg>';
+
+    var cap = niceDate(all[0].date) + ' to ' + niceDate(all[all.length - 1].date)
+      + ' \u00B7 dashed line is the \u00A3500 start';
+    if (prior.length) cap += ' \u00B7 faded section is before we bought, for context only';
+    h += '<div class="chart-cap">' + cap + '</div></div>';
+    return h;
+  }
+
+  /* ---------- interaction ---------- */
+
+  function find(ref) {
+    var parts = ref.split(':');
+    var b = state.books[parts[0]];
+    var pos = b.positions.filter(function (x) { return x.id === parts[1]; })[0];
+    return { key: parts[0], book: b, pos: pos };
+  }
+
+  function num(id) {
+    var el = document.getElementById(id);
+    var v = el ? parseFloat(el.value) : NaN;
+    return isNaN(v) ? null : v;
+  }
+  function txt(id) {
+    var el = document.getElementById(id);
+    return el ? el.value.trim() : '';
+  }
+
+  function wire() {
+    root.querySelectorAll('[data-tab]').forEach(function (el) {
+      el.onclick = function () { view = el.dataset.tab; openPos = null; adding = null; render(); };
+    });
+
+    root.querySelectorAll('[data-pos]').forEach(function (el) {
+      var go = function () {
+        openPos = openPos === el.dataset.pos ? null : el.dataset.pos;
+        adding = null; selling = null; topping = null; render();
+      };
+      el.onclick = go;
+      el.onkeydown = function (e) { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); go(); } };
+    });
+
+    root.querySelectorAll('[data-close]').forEach(function (el) {
+      el.onclick = function () { openPos = null; render(); };
+    });
+    root.querySelectorAll('[data-cancel]').forEach(function (el) {
+      el.onclick = function () { adding = null; render(); };
+    });
+    root.querySelectorAll('[data-import]').forEach(function (el) {
+      el.onclick = function () { importing = el.dataset.import; adding = null; openPos = null; render(); };
+    });
+    root.querySelectorAll('[data-noimport]').forEach(function (el) {
+      el.onclick = function () { importing = null; render(); };
+    });
+    root.querySelectorAll('[data-importgo]').forEach(function (el) {
+      el.onclick = function () {
+        var key = el.dataset.importgo;
+        var b = state.books[key];
+        var rows = parseList(txt('imp'));
+        if (!rows.length) {
+          error = 'Nothing readable. Each line needs a name, a ticker and an amount, separated by commas.';
+          render(); return;
+        }
+        var why = txt('impwhy');
+        rows.forEach(function (r) {
+          b.positions.push({
+            id: uid(), name: r.name, ticker: r.ticker,
+            cost: r.cost, entry: null, now: null
+          });
+          b.cash = Math.max(0, b.cash - r.cost);
+          state.trades.unshift({
+            id: uid(), date: today(), book: key, action: 'Bought',
+            name: r.name, amount: r.cost, why: why
+          });
+        });
+        importing = null; error = null;
+        fetchNote = 'Added ' + rows.length + '. Hit Refresh data to price them.';
+        save(); render();
+      };
+    });
+
+    root.querySelectorAll('[data-add]').forEach(function (el) {
+      el.onclick = function () { adding = el.dataset.add; importing = null; openPos = null; render(); };
+    });
+
+    root.querySelectorAll('[data-save]').forEach(function (el) {
+      el.onclick = function () {
+        var f = find(el.dataset.save);
+        var entry = num('e-' + f.pos.id);
+        var now = num('n-' + f.pos.id);
+        f.pos.entry = entry;
+        f.pos.now = now != null ? now : entry;
+        f.pos.sym = txt('s-' + f.pos.id);
+        openPos = null;
+        snapshot();
+        save(); render();
+      };
+    });
+
+    root.querySelectorAll('[data-sellform]').forEach(function (el) {
+      el.onclick = function () { selling = el.dataset.sellform; topping = null; render(); };
+    });
+    root.querySelectorAll('[data-nosell]').forEach(function (el) {
+      el.onclick = function () { selling = null; render(); };
+    });
+    root.querySelectorAll('[data-top]').forEach(function (el) {
+      el.onclick = function () { topping = el.dataset.top; selling = null; render(); };
+    });
+    root.querySelectorAll('[data-notop]').forEach(function (el) {
+      el.onclick = function () { topping = null; render(); };
+    });
+
+    root.querySelectorAll('[data-sell]').forEach(function (el) {
+      el.onclick = function () {
+        var f = find(el.dataset.sell);
+        var val = posValue(f.pos);
+        var amt = num('sa-' + f.pos.id);
+        if (amt == null || amt <= 0) { error = 'Enter how much to sell.'; render(); return; }
+        if (amt > val) amt = val;
+
+        f.book.cash += amt;
+        var closed = amt >= val - 0.005;
+        if (closed) {
+          f.book.positions = f.book.positions.filter(function (x) { return x.id !== f.pos.id; });
+        } else {
+          f.pos.cost = f.pos.cost * (1 - amt / val);
+        }
+        state.trades.unshift({
+          id: uid(), date: today(), book: f.key, action: closed ? 'Sold' : 'Trimmed',
+          name: f.pos.name, amount: amt, why: txt('sw-' + f.pos.id)
+        });
+        selling = null; openPos = null; error = null;
+        snapshot(); save(); render();
+      };
+    });
+
+    root.querySelectorAll('[data-topgo]').forEach(function (el) {
+      el.onclick = function () {
+        var f = find(el.dataset.topgo);
+        var amt = num('ta-' + f.pos.id);
+        if (amt == null || amt <= 0) { error = 'Enter how much to add.'; render(); return; }
+        f.pos.cost += amt;
+        f.book.cash = Math.max(0, f.book.cash - amt);
+        state.trades.unshift({
+          id: uid(), date: today(), book: f.key, action: 'Added to',
+          name: f.pos.name, amount: amt, why: txt('tw-' + f.pos.id)
+        });
+        topping = null; openPos = null; error = null;
+        snapshot(); save(); render();
+      };
+    });
+
+    root.querySelectorAll('[data-update]').forEach(function (el) {
+      el.onclick = function () {
+        if (waitingWorker) waitingWorker.postMessage('skip-waiting');
+        else location.reload();
+      };
+    });
+
+    root.querySelectorAll('[data-buy]').forEach(function (el) {
+      el.onclick = function () {
+        var key = el.dataset.buy;
+        var b = state.books[key];
+        var name = txt('a-name');
+        var cost = num('a-cost');
+        if (!name || !cost || cost <= 0) {
+          error = 'A position needs a company and an amount above zero.';
+          render(); return;
+        }
+        b.positions.push({
+          id: uid(), name: name, ticker: txt('a-tick') || '\u2014',
+          cost: cost, entry: num('a-entry'), now: num('a-entry')
+        });
+        b.cash = Math.max(0, b.cash - cost);
+        state.trades.unshift({
+          id: uid(), date: today(), book: key, action: 'Bought',
+          name: name, amount: cost, why: txt('a-why')
+        });
+        adding = null; error = null;
+        save(); render();
+      };
+    });
+
+    root.querySelectorAll('[data-ev]').forEach(function (el) {
+      var go = function () {
+        var e = state.events.filter(function (x) { return x.id === el.dataset.ev; })[0];
+        e.done = !e.done;
+        save(); render();
+      };
+      el.onclick = go;
+      el.onkeydown = function (k) { if (k.key === 'Enter' || k.key === ' ') { k.preventDefault(); go(); } };
+    });
+
+    root.querySelectorAll('[data-fetch]').forEach(function (el) {
+      el.onclick = function () { if (!busy) fetchPrices(); };
+    });
+    root.querySelectorAll('[data-alpha]').forEach(function (el) {
+      el.onclick = function () { if (!busy) fetchAlpha(); };
+    });
+    root.querySelectorAll('[data-export]').forEach(function (el) {
+      el.onclick = function () { showExport = !showExport; showKey = false; render(); };
+    });
+    root.querySelectorAll('[data-hideexport]').forEach(function (el) {
+      el.onclick = function () { showExport = false; render(); };
+    });
+    root.querySelectorAll('[data-copy]').forEach(function (el) {
+      el.onclick = function () {
+        var ta = document.getElementById('snap');
+        if (!ta) return;
+        ta.removeAttribute('readonly');
+        ta.select();
+        ta.setSelectionRange(0, 99999);
+        var done = false;
+        try { done = document.execCommand('copy'); } catch (e) { done = false; }
+        if (!done && navigator.clipboard) {
+          navigator.clipboard.writeText(ta.value).then(function () {
+            el.textContent = 'Copied';
+          }, function () {
+            el.textContent = 'Select it and copy by hand';
+          });
+        } else {
+          el.textContent = done ? 'Copied' : 'Select it and copy by hand';
+        }
+        ta.setAttribute('readonly', 'readonly');
+      };
+    });
+
+    root.querySelectorAll('[data-key]').forEach(function (el) {
+      el.onclick = function () { showKey = !showKey; showExport = false; render(); };
+    });
+    root.querySelectorAll('[data-savekey]').forEach(function (el) {
+      el.onclick = function () {
+        state.avKey = txt('avk');
+        var a = txt('n-a'), b = txt('n-b');
+        if (a) state.books.screened.name = a;
+        if (b) state.books.defence.name = b;
+        showKey = false; fetchNote = null;
+        save(); render();
+      };
+    });
+    root.querySelectorAll('[data-reset]').forEach(function (el) {
+      el.onclick = function () {
+        if (!window.confirm('Empty both portfolios to £500 cash each? Holdings, trades and history all go.')) return;
+        var keep = state.avKey, na = state.books.screened.name, nb = state.books.defence.name;
+        state = seed();
+        state.avKey = keep;
+        state.books.screened.name = na;
+        state.books.defence.name = nb;
+        state.books.screened.positions = [];
+        state.books.defence.positions = [];
+        state.books.screened.cash = 500;
+        state.books.defence.cash = 500;
+        showKey = false;
+        fetchNote = 'Cleared. Add your own picks, then hit Refresh data to fill in the prices.';
+        save(); render();
+      };
+    });
+    root.querySelectorAll('[data-hidekey]').forEach(function (el) {
+      el.onclick = function () { showKey = false; render(); };
+    });
+    root.querySelectorAll('[data-back]').forEach(function (el) {
+      el.onclick = function () { if (!busy) fetchHistory(); };
+    });
+    root.querySelectorAll('[data-accept]').forEach(function (el) {
+      el.onclick = acceptPrices;
+    });
+    root.querySelectorAll('[data-discard]').forEach(function (el) {
+      el.onclick = function () { pending = null; fetchNote = null; render(); };
+    });
+  }
+
+  load();
+})();
+</script>
