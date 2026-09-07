@@ -9,8 +9,9 @@
    v1.16 = ranked movers with charts, and a choice of opening tab.
    v1.17 = fix blank tab area on load.
    v1.18 = read-only view codes and a Rivals tab.
-   v1.19 = label the lines on the chart. */
-const VERSION = 'v1.19';
+   v1.19 = label the lines on the chart.
+   v1.20 = show which trading day a price belongs to. */
+const VERSION = 'v1.20';
 const CACHE = 'portfolios-' + VERSION;
 
 const SHELL = [

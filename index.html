@@ -464,7 +464,9 @@
       var priced = pos.entry && pos.now;
       h += '<div class="pos" data-pos="' + key + ':' + pos.id + '" tabindex="0" role="button">';
       h += '<div class="pos-main"><div class="pos-name">' + esc(pos.name) + '</div>';
-      h += '<div class="pos-tick">' + esc(pos.ticker) + (priced ? ' \u00B7 ' + pos.entry + 'p \u2192 ' + pos.now + 'p' : ' \u00B7 no price yet') + '</div>';
+      h += '<div class="pos-tick">' + esc(pos.ticker)
+        + (priced ? ' \u00B7 ' + pos.entry + 'p \u2192 ' + pos.now + 'p'
+            + (pos.asOf ? ' at ' + niceDate(pos.asOf) : '') : ' \u00B7 no price yet') + '</div>';
       if (pos.note) h += '<div class="pos-note">' + esc(pos.note) + '</div>';
       h += '</div>';
       h += '<div class="pos-right"><div class="pos-val">' + money(val) + '</div>';
@@ -1226,18 +1228,28 @@
     if (got) {
       // Current prices go to review.
       var clean = {}, n = 0;
+      var asOf = null;
       positions.forEach(function (p) {
         var m = closes[p.id];
         if (!m) return;
         var days = Object.keys(m).sort();
-        var v = m[days[days.length - 1]];
-        if (isFinite(v) && v > 0) { clean[p.ticker] = v; n++; }
+        var last = days[days.length - 1];
+        var v = m[last];
+        if (isFinite(v) && v > 0) {
+          clean[p.ticker] = v;
+          p.asOf = last;
+          if (!asOf || last > asOf) asOf = last;
+          n++;
+        }
       });
+      state.dataAsOf = asOf;
       if (n) { state.pending = clean; save(); }
 
       if (positions.length === allPositions().length) buildPriorFromCloses(closes, positions);
 
       fetchNote = 'Got ' + got + ' of ' + positions.length + '.'
+        + (state.dataAsOf ? ' Latest close available is ' + niceDate(state.dataAsOf)
+            + (state.dataAsOf === today() ? '.' : ', not today \u2014 the free feed publishes end-of-day data late.') : '')
         + (dead.length ? ' No data for ' + dead.join(', ') + ' \u2014 try editing their symbols.' : '')
         + ' ' + budgetLeft() + ' calls left today.';
     } else if (!error) {
@@ -1344,7 +1356,11 @@
 
   function reviewPanel() {
     var h = '<div class="review">';
-    h += '<div class="review-head"><strong>Nothing is applied until you accept.</strong> These came from a web search, not a market feed. They may be delayed, and gold trades in dollars so check that one. Edit anything that looks wrong after accepting.</div>';
+    h += '<div class="review-head">'
+      + (state.dataAsOf ? '<strong>Closing prices for ' + esc(niceDate(state.dataAsOf)) + '.</strong> '
+          + (state.dataAsOf === today() ? '' : 'Not today \u2014 the free feed publishes end-of-day data late, so a refresh before it lands returns the previous close unchanged. ')
+        : '')
+      + '<strong>Nothing is applied until you accept.</strong> These came from a web search, not a market feed. They may be delayed, and gold trades in dollars so check that one. Edit anything that looks wrong after accepting.</div>';
     allPositions().forEach(function (p) {
       var np = state.pending[p.ticker];
       if (np == null) return;
@@ -1524,7 +1540,7 @@
     }
     h += '</svg></div>';
 
-    var cap = niceDate(all[0].date) + ' to ' + niceDate(all[all.length - 1].date)
+    var cap = niceDate(all[0].date) + ' to ' + niceDate(state.dataAsOf || all[all.length - 1].date)
       + ' \u00B7 dashed line is the \u00A3500 start';
     if (prior.length) cap += ' \u00B7 faded section is before we bought, for context only';
     h += '<div class="chart-cap">' + cap + '</div></div>';
