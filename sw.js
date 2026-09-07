@@ -11,8 +11,9 @@
    v1.18 = read-only view codes and a Rivals tab.
    v1.19 = label the lines on the chart.
    v1.20 = show which trading day a price belongs to.
-   v1.21 = Stooq as primary price source, same-day and keyless. */
-const VERSION = 'v1.21';
+   v1.21 = Stooq as primary price source, same-day and keyless.
+   v1.22 = report why a Stooq fetch failed. */
+const VERSION = 'v1.22';
 const CACHE = 'portfolios-' + VERSION;
 
 const SHELL = [

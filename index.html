@@ -1287,8 +1287,15 @@
       var syms = positions.map(stooqSymbol);
       var res = await fetch('./api/prices?days=140&symbols=' + encodeURIComponent(syms.join(',')),
         { cache: 'no-store' });
-      var j = await res.json();
-      if (!res.ok || j.error) throw new Error(j.error || 'bad response');
+      var body = await res.text();
+      var j;
+      try { j = JSON.parse(body); }
+      catch (parseErr) {
+        throw new Error('The price endpoint returned a page, not data \u2014 '
+          + 'functions/api/prices.js is probably not deployed. Status ' + res.status + '.');
+      }
+      if (!res.ok || j.error) throw new Error((j.error || 'status ' + res.status)
+        + (j.missing && j.missing.length ? ' Symbols tried: ' + j.missing.join(', ') + '.' : ''));
 
       var closes = {};
       positions.forEach(function (p) {
@@ -1310,8 +1317,8 @@
       save();
     } catch (e) {
       fetchNote = null;
-      error = 'Stooq did not answer. It is an undocumented source, so this happens \u2014 '
-        + (state.avKey ? 'try Alpha Vantage instead, or wait and retry.' : 'wait and retry, or add an Alpha Vantage key as a fallback.');
+      error = 'Stooq fetch failed. ' + (e && e.message ? e.message : 'No reason given.')
+        + (state.avKey ? ' Use Alpha Vantage instead for now.' : ' An Alpha Vantage key would give you a fallback.');
     }
     busy = false;
     render();
