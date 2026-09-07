@@ -10,8 +10,9 @@
    v1.17 = fix blank tab area on load.
    v1.18 = read-only view codes and a Rivals tab.
    v1.19 = label the lines on the chart.
-   v1.20 = show which trading day a price belongs to. */
-const VERSION = 'v1.20';
+   v1.20 = show which trading day a price belongs to.
+   v1.21 = Stooq as primary price source, same-day and keyless. */
+const VERSION = 'v1.21';
 const CACHE = 'portfolios-' + VERSION;
 
 const SHELL = [

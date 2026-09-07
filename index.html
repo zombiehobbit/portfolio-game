@@ -501,8 +501,11 @@
     h += '<div class="field"><label for="d-' + pos.id + '">Why it is here</label>'
        + '<textarea id="d-' + pos.id + '" placeholder="One line on what this is and why you bought it">'
        + esc(pos.note || '') + '</textarea></div>';
-    h += '<div class="field"><label for="s-' + pos.id + '">Data symbol</label>'
-       + '<input id="s-' + pos.id + '" value="' + esc(avSymbol(pos)) + '" autocomplete="off"></div>';
+    h += '<div class="row2">'
+       + '<div class="field"><label for="q-' + pos.id + '">Stooq symbol</label>'
+       + '<input id="q-' + pos.id + '" value="' + esc(stooqSymbol(pos)) + '" autocomplete="off" spellcheck="false"></div>'
+       + '<div class="field"><label for="s-' + pos.id + '">Alpha Vantage symbol</label>'
+       + '<input id="s-' + pos.id + '" value="' + esc(avSymbol(pos)) + '" autocomplete="off" spellcheck="false"></div></div>';
     h += '<div class="btn-row"><button class="act" data-save="' + key + ':' + pos.id + '">Save</button>'
        + '<button class="act ghost" data-close="1">Close</button>'
        + '<button class="act ghost" data-top="' + key + ':' + pos.id + '">Buy more</button>'
@@ -854,9 +857,9 @@
     var left = budgetLeft();
     var h = '<div class="pricebar">';
 
+    h += '<button class="act" data-pick="1"' + (busy ? ' disabled' : '') + '>'
+       + (busy ? 'Working\u2026' : 'Refresh data') + '</button>';
     if (state.avKey) {
-      h += '<button class="act" data-pick="1"' + (busy ? ' disabled' : '') + '>'
-         + (busy ? 'Working\u2026' : 'Refresh data') + '</button>';
     }
     h += '<button class="act ghost" data-paste="1">Enter prices</button>';
     if (false) {
@@ -969,7 +972,10 @@
     if (showPick) {
       h += '<div style="flex:1 1 100%">';
       var already = allPositions().filter(function (p) { return p.at === today(); }).length;
-      h += '<p class="hint" style="margin:10px 0 8px">One lookup each. '
+      h += '<p class="hint" style="margin:10px 0 8px">Stooq is free, unmetered and same-day, and fetches '
+        + 'everything at once. Alpha Vantage is the fallback: one lookup each, roughly '
+        + budgetLeft() + ' left, and its free feed runs a day behind.</p>';
+      h += '<p class="hint" style="margin:0 0 8px;display:none">One lookup each. '
         + (already ? already + ' of ' + allPositions().length + ' were already fetched today, so they start unticked. ' : '')
         + 'Roughly ' + budgetLeft() + ' left by this device\u2019s count, which is only a guess \u2014 '
         + 'the allowance follows your key and your connection, not this app.</p>';
@@ -996,8 +1002,11 @@
       });
       var n = allPositions().filter(function (p) { return picked[p.id]; }).length;
       h += '<div class="btn-row" style="margin-top:10px">'
-        + '<button class="act" data-refreshsel="1"' + (n ? '' : ' disabled') + '>'
+        + '<button class="act" data-refreshsel="stooq"' + (n ? '' : ' disabled') + '>'
         + (n ? 'Refresh these ' + n : 'Nothing chosen') + '</button>'
+        + (state.avKey
+            ? '<button class="act ghost" data-refreshsel="alpha"' + (n ? '' : ' disabled') + '>Use Alpha Vantage</button>'
+            : '')
         + '<button class="act ghost" data-nopick="1">Close</button></div>';
       h += '<p class="hint" style="margin-top:10px">'
         + (n === allPositions().length
@@ -1226,26 +1235,8 @@
     }
 
     if (got) {
-      // Current prices go to review.
-      var clean = {}, n = 0;
-      var asOf = null;
-      positions.forEach(function (p) {
-        var m = closes[p.id];
-        if (!m) return;
-        var days = Object.keys(m).sort();
-        var last = days[days.length - 1];
-        var v = m[last];
-        if (isFinite(v) && v > 0) {
-          clean[p.ticker] = v;
-          p.asOf = last;
-          if (!asOf || last > asOf) asOf = last;
-          n++;
-        }
-      });
-      state.dataAsOf = asOf;
-      if (n) { state.pending = clean; save(); }
-
-      if (positions.length === allPositions().length) buildPriorFromCloses(closes, positions);
+      var n = applyCloses(closes, positions, null);
+      if (n) save();
 
       fetchNote = 'Got ' + got + ' of ' + positions.length + '.'
         + (state.dataAsOf ? ' Latest close available is ' + niceDate(state.dataAsOf)
@@ -1258,6 +1249,72 @@
 
     busy = false;
     save(); render();
+  }
+
+  function applyCloses(closes, positions, asOf) {
+    var clean = {}, n = 0, latest = null;
+    positions.forEach(function (p) {
+      var m = closes[p.id];
+      if (!m) return;
+      var days = Object.keys(m).sort();
+      if (!days.length) return;
+      var last = days[days.length - 1];
+      var v = m[last];
+      if (!isFinite(v) || v <= 0) return;
+      clean[p.ticker] = v;
+      p.asOf = last;
+      p.series = days.slice(-60).map(function (d) { return { d: d, c: m[d] }; });
+      if (!latest || last > latest) latest = last;
+      n++;
+    });
+    state.dataAsOf = asOf || latest;
+    if (n) state.pending = clean;
+    if (positions.length === allPositions().length) buildPriorFromCloses(closes, positions);
+    return n;
+  }
+
+  function stooqSymbol(p) {
+    return (p.stooq && p.stooq.trim()) || (p.ticker.replace(/\.$/, '') + '.UK').toLowerCase();
+  }
+
+  async function fetchStooq(subset) {
+    var positions = subset && subset.length ? subset : allPositions();
+    busy = true; error = null; state.pending = null;
+    fetchNote = 'Fetching ' + positions.length + ' from Stooq\u2026';
+    render();
+
+    try {
+      var syms = positions.map(stooqSymbol);
+      var res = await fetch('./api/prices?days=140&symbols=' + encodeURIComponent(syms.join(',')),
+        { cache: 'no-store' });
+      var j = await res.json();
+      if (!res.ok || j.error) throw new Error(j.error || 'bad response');
+
+      var closes = {};
+      positions.forEach(function (p) {
+        var rows = j.series[stooqSymbol(p)];
+        if (!rows) return;
+        var m = {};
+        rows.forEach(function (r) { m[r.d] = r.c; });
+        closes[p.id] = m;
+      });
+
+      var n = applyCloses(closes, positions, j.asOf);
+      if (!n) throw new Error('nothing usable');
+
+      var dead = positions.filter(function (p) { return !closes[p.id]; })
+        .map(function (p) { return p.ticker; });
+      fetchNote = 'Got ' + n + ' of ' + positions.length + ' from Stooq, closing '
+        + niceDate(state.dataAsOf) + '.'
+        + (dead.length ? ' No data for ' + dead.join(', ') + ' \u2014 check their Stooq symbols.' : '');
+      save();
+    } catch (e) {
+      fetchNote = null;
+      error = 'Stooq did not answer. It is an undocumented source, so this happens \u2014 '
+        + (state.avKey ? 'try Alpha Vantage instead, or wait and retry.' : 'wait and retry, or add an Alpha Vantage key as a fallback.');
+    }
+    busy = false;
+    render();
   }
 
   function buildPriorFromCloses(closes, positions) {
@@ -1769,6 +1826,7 @@
         f.pos.now = now != null ? now : entry;
         f.pos.at = today();
         f.pos.sym = txt('s-' + f.pos.id);
+        f.pos.stooq = txt('q-' + f.pos.id);
         f.pos.note = txt('d-' + f.pos.id);
         openPos = null;
         snapshot();
@@ -1962,7 +2020,8 @@
         var subset = allPositions().filter(function (p) { return picked[p.id]; });
         if (!subset.length) return;
         showPick = false;
-        fetchAlpha(subset);
+        if (el.dataset.refreshsel === 'alpha') fetchAlpha(subset);
+        else fetchStooq(subset);
       };
     });
     root.querySelectorAll('[data-export]').forEach(function (el) {
