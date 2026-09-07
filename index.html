@@ -972,9 +972,11 @@
     if (showPick) {
       h += '<div style="flex:1 1 100%">';
       var already = allPositions().filter(function (p) { return p.at === today(); }).length;
-      h += '<p class="hint" style="margin:10px 0 8px">Stooq is free, unmetered and same-day, and fetches '
-        + 'everything at once. Alpha Vantage is the fallback: one lookup each, roughly '
-        + budgetLeft() + ' left, and its free feed runs a day behind.</p>';
+      h += '<p class="hint" style="margin:10px 0 8px">One Alpha Vantage lookup each, roughly '
+        + budgetLeft() + ' left, about 13 seconds apart. Its free feed runs a day behind, '
+        + 'so today\u2019s close arrives tomorrow. When you need a price sooner, look it up at '
+        + '<a href="https://stooq.com/q/d/?s=chg.uk" target="_blank" rel="noopener">stooq.com</a> '
+        + 'and use Enter prices \u2014 they serve browsers but block automated fetching, which is their call.</p>';
       h += '<p class="hint" style="margin:0 0 8px;display:none">One lookup each. '
         + (already ? already + ' of ' + allPositions().length + ' were already fetched today, so they start unticked. ' : '')
         + 'Roughly ' + budgetLeft() + ' left by this device\u2019s count, which is only a guess \u2014 '
@@ -1002,11 +1004,8 @@
       });
       var n = allPositions().filter(function (p) { return picked[p.id]; }).length;
       h += '<div class="btn-row" style="margin-top:10px">'
-        + '<button class="act" data-refreshsel="stooq"' + (n ? '' : ' disabled') + '>'
-        + (n ? 'Refresh these ' + n : 'Nothing chosen') + '</button>'
-        + (state.avKey
-            ? '<button class="act ghost" data-refreshsel="alpha"' + (n ? '' : ' disabled') + '>Use Alpha Vantage</button>'
-            : '')
+        + '<button class="act" data-refreshsel="alpha"' + (n && state.avKey ? '' : ' disabled') + '>'
+        + (!state.avKey ? 'Add a key first' : n ? 'Refresh these ' + n : 'Nothing chosen') + '</button>'
         + '<button class="act ghost" data-nopick="1">Close</button></div>';
       h += '<p class="hint" style="margin-top:10px">'
         + (n === allPositions().length

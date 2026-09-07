@@ -12,8 +12,9 @@
    v1.19 = label the lines on the chart.
    v1.20 = show which trading day a price belongs to.
    v1.21 = Stooq as primary price source, same-day and keyless.
-   v1.22 = report why a Stooq fetch failed. */
-const VERSION = 'v1.22';
+   v1.22 = report why a Stooq fetch failed.
+   v1.23 = Stooq blocks servers; Alpha Vantage is the automated source again. */
+const VERSION = 'v1.23';
 const CACHE = 'portfolios-' + VERSION;
 
 const SHELL = [
