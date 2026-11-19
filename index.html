@@ -15,6 +15,7 @@
     --rule: #CBD2C9;
     --pine: #2F6F62;
     --brass: #8A6A2F;
+    --slate: #3E5B78;
     --gain: #2E6B41;
     --loss: #9C3A28;
     --serif: Georgia, 'Iowan Old Style', 'Times New Roman', serif;
@@ -160,6 +161,15 @@
   .chart-tag { position: absolute; left: 0; font-size: 11px; line-height: 16px; background: var(--surface);
     padding: 0 4px 0 0; z-index: 2; white-space: nowrap; pointer-events: none; }
   .chart-cap { font-size: 12px; color: var(--muted); margin-top: 8px; line-height: 1.45; }
+  .chart-tag.right { left: auto; padding: 0 0 0 4px; }
+
+  .aside { display: flex; flex-wrap: wrap; gap: 10px; margin: 0 0 16px; }
+  .aside-card { flex: 1 1 170px; background: var(--surface); border: 1px solid var(--rule);
+    padding: 11px 13px; }
+  .aside-name { font-size: 12px; }
+  .aside-val { font-family: var(--serif); font-size: clamp(18px, 5vw, 23px); line-height: 1.1;
+    letter-spacing: -0.02em; margin-top: 3px; font-variant-numeric: tabular-nums; }
+  .aside-sub { font-size: 11px; color: var(--muted); margin-top: 3px; }
 
   .pos-main { flex: 1 1 auto; min-width: 0; }
   .pos-name { overflow-wrap: anywhere; }
@@ -269,6 +279,10 @@
             p('QinetiQ', 'QQ.', 50),
             p('Avon Technologies', 'AVON', 50)
           ]
+        },
+        momentum: {
+          name: 'Momentum', color: 'var(--slate)', cash: 500,
+          positions: []
         }
       },
       trades: [],
@@ -328,6 +342,7 @@
     if (state.startTab !== 'movers') state.startTab = 'books';
     if (!Array.isArray(state.rivals)) state.rivals = [];
     if (typeof state.viewCode !== 'string') state.viewCode = '';
+    ensureBooks();
     if (!view) view = state.startTab;
     if (!inClaude() && !state.avKey) {
       fetchNote = 'Add an Alpha Vantage key in Settings to fetch prices.';
@@ -357,6 +372,48 @@
   function bookValue(b) {
     return b.positions.reduce(function (s, x) { return s + posValue(x); }, 0) + b.cash;
   }
+
+  /* ---------- which books there are ----------
+
+     Screened and Defence are the scored pair: they are the control, they are the
+     race at the top of the page, and they are left alone until 5 March. Any other
+     book rides alongside and is deliberately not part of that race.
+
+     History rows carry one value per book under a short slot letter. Screened and
+     Defence keep the original 's' and 'd' so existing rows, synced data and the
+     nightly task all still read correctly; a book with no entry here falls back to
+     its own key as the slot. */
+
+  var SLOT = { screened: 's', defence: 'd', momentum: 'm' };
+  var RACE = ['screened', 'defence'];
+
+  var EXTRA_BOOKS = {
+    momentum: { name: 'Momentum', color: 'var(--slate)', cash: 500 }
+  };
+
+  function slotOf(k) { return SLOT[k] || k; }
+  function bookKeys() { return state && state.books ? Object.keys(state.books) : []; }
+  function asideKeys() {
+    return bookKeys().filter(function (k) { return RACE.indexOf(k) < 0; });
+  }
+
+  // Older saved state, and anything restored from a backup, predates the extra
+  // books. Add any that are missing and make sure every book is well formed.
+  function ensureBooks() {
+    if (!state.books) state.books = {};
+    Object.keys(EXTRA_BOOKS).forEach(function (k) {
+      if (state.books[k]) return;
+      var d = EXTRA_BOOKS[k];
+      state.books[k] = { name: d.name, color: d.color, cash: d.cash, positions: [] };
+    });
+    bookKeys().forEach(function (k) {
+      var b = state.books[k];
+      if (!Array.isArray(b.positions)) b.positions = [];
+      if (typeof b.cash !== 'number' || !isFinite(b.cash)) b.cash = 0;
+      if (!b.color) b.color = 'var(--muted)';
+      if (!b.name) b.name = k;
+    });
+  }
   function money(n) {
     return '\u00A3' + n.toLocaleString('en-GB', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   }
@@ -383,7 +440,8 @@
 
     var html = '';
     html += '<h1>' + esc(state.books.screened.name) + ' versus ' + esc(state.books.defence.name) + '</h1>';
-    html += '<p class="sub">Two fictional \u00A3500 portfolios, same start line. Six months to double.</p>';
+    html += '<p class="sub">Two fictional \u00A3500 portfolios, same start line. Six months to double.'
+      + (asideKeys().length ? ' A third book runs alongside, outside the race.' : '') + '</p>';
     if (firstRun) {
       html += welcome();
       root.innerHTML = html;
@@ -402,6 +460,7 @@
     if (error) html += '<div class="err">' + esc(error) + '</div>';
 
     html += race(s, d);
+    html += aside();
     html += priceBar();
     if (state.pending) html += reviewPanel();
     html += chart();
@@ -414,7 +473,7 @@
     html += tab('diary', 'Diary');
     html += '</div>';
 
-    if (view === 'books') html += renderBook('screened') + renderBook('defence');
+    if (view === 'books') html += bookKeys().map(function (k) { return renderBook(k); }).join('');
     if (view === 'movers') html += renderMovers();
     if (view === 'rivals') html += renderRivals();
     if (view === 'trades') html += renderTrades();
@@ -427,18 +486,44 @@
   function race(s, d) {
     function posOf(v) { return Math.max(0, Math.min(100, (v - 400) / 6)); } // £400–£1000
     var h = '<div class="race"><div class="totals">';
-    h += '<div class="side"><div class="side-name"><span class="dot" style="background:var(--pine)"></span>Screened</div>'
+    var bs = state.books.screened, bd = state.books.defence;
+    h += '<div class="side"><div class="side-name"><span class="dot" style="background:'
+       + bs.color + '"></span>' + esc(bs.name) + '</div>'
        + '<div class="big">' + money(s) + '</div>'
        + '<div class="delta ' + cls(s - 500) + '">' + pct((s - 500) / 5) + '</div></div>';
     h += '<div class="divider"></div>';
-    h += '<div class="side b"><div class="side-name">Defence<span class="dot" style="background:var(--brass)"></span></div>'
+    h += '<div class="side b"><div class="side-name">' + esc(bd.name)
+       + '<span class="dot" style="background:' + bd.color + '"></span></div>'
        + '<div class="big">' + money(d) + '</div>'
        + '<div class="delta ' + cls(d - 500) + '">' + pct((d - 500) / 5) + '</div></div>';
     h += '</div>';
     h += '<div class="track"><div class="track-line"></div>'
-       + '<div class="marker" style="left:' + posOf(s) + '%;background:var(--pine)"></div>'
-       + '<div class="marker" style="left:' + posOf(d) + '%;background:var(--brass)"></div></div>';
+       + '<div class="marker" style="left:' + posOf(s) + '%;background:' + bs.color + '"></div>'
+       + '<div class="marker" style="left:' + posOf(d) + '%;background:' + bd.color + '"></div></div>';
     h += '<div class="track-ends"><span>\u00A3400</span><span>\u00A3500 start</span><span>\u00A31,000 target</span></div>';
+    h += '</div>';
+    return h;
+  }
+
+  // Books outside the scored pair. They get a total and a line on the chart, but
+  // they stay off the race track, which is Screened against Defence and nothing else.
+  function aside() {
+    var keys = asideKeys();
+    if (!keys.length) return '';
+    var h = '<div class="aside">';
+    keys.forEach(function (k) {
+      var b = state.books[k];
+      var v = bookValue(b);
+      var n = b.positions.length;
+      h += '<div class="aside-card">';
+      h += '<div class="aside-name"><span class="dot" style="background:' + b.color + '"></span>'
+         + esc(b.name) + '</div>';
+      h += '<div class="aside-val">' + money(v) + '</div>';
+      h += '<div class="aside-sub"><span class="' + cls(v - 500) + '">' + pct((v - 500) / 5)
+         + '</span> \u00b7 ' + (n ? n + (n === 1 ? ' holding' : ' holdings') : 'cash, nothing bought yet')
+         + ' \u00b7 outside the race</div>';
+      h += '</div>';
+    });
     h += '</div>';
     return h;
   }
@@ -633,7 +718,7 @@
 
   function renderMovers() {
     var rows = [];
-    ['screened', 'defence'].forEach(function (k) {
+    bookKeys().forEach(function (k) {
       state.books[k].positions.forEach(function (p) {
         if (!p.entry || !p.now) return;
         var val = posValue(p);
@@ -702,12 +787,13 @@
 
     // standings: everyone's books, yours included
     var line = [];
-    ['screened', 'defence'].forEach(function (k) {
+    bookKeys().forEach(function (k) {
       line.push({ who: 'You', name: state.books[k].name, val: bookValue(state.books[k]) });
     });
     state.rivals.forEach(function (r) {
       if (!r.data || !r.data.books) return;
-      ['screened', 'defence'].forEach(function (k) {
+      // Whatever books they run, not whatever books we run.
+      Object.keys(r.data.books).forEach(function (k) {
         var b = r.data.books[k];
         if (b) line.push({ who: r.name, name: b.name, val: rivalValue(b) });
       });
@@ -733,7 +819,7 @@
       h += '<div class="book-head"><span class="book-title">' + esc(r.name) + '</span>'
         + '<span class="book-val">' + (r.fetched ? niceDate(r.fetched) : 'not fetched') + '</span></div>';
       if (r.data && r.data.books) {
-        ['screened', 'defence'].forEach(function (k) {
+        Object.keys(r.data.books).forEach(function (k) {
           var b = r.data.books[k];
           if (!b) return;
           h += '<div class="pos" style="background:#F5F7F3"><div class="pos-main">'
@@ -805,10 +891,12 @@
       return '<div class="empty">No trades yet.<br>Every buy and sell lands here with the reason attached, so you can see later which calls were judgement and which were luck.</div>';
     }
     return state.trades.map(function (t) {
-      var col = t.book === 'screened' ? 'var(--pine)' : 'var(--brass)';
+      var tb = state.books[t.book];
+      var col = (tb && tb.color) || 'var(--muted)';
       var h = '<div class="entry">';
       h += '<div class="entry-top"><span class="entry-what">'
-         + '<span class="tag" style="color:' + col + ';border-color:' + col + '">' + esc(state.books[t.book].name) + '</span>'
+         + '<span class="tag" style="color:' + col + ';border-color:' + col + '">'
+         + esc(tb ? tb.name : t.book) + '</span>'
          + esc(t.action) + ' ' + esc(t.name) + ' \u00B7 ' + money(t.amount) + '</span>'
          + '<span class="entry-when">' + niceDate(t.date) + '</span></div>';
       if (t.why) h += '<div class="entry-why">' + esc(t.why) + '</div>';
@@ -831,7 +919,9 @@
   /* ---------- prices from the web ---------- */
 
   function allPositions() {
-    return state.books.screened.positions.concat(state.books.defence.positions);
+    var out = [];
+    bookKeys().forEach(function (k) { out = out.concat(state.books[k].positions); });
+    return out;
   }
 
   function welcome() {
@@ -891,11 +981,13 @@
         + '<option value="books"' + (state.startTab === 'books' ? ' selected' : '') + '>Holdings</option>'
         + '<option value="movers"' + (state.startTab === 'movers' ? ' selected' : '') + '>Movers</option>'
         + '</select></div>';
-      h += '<div class="row2">'
-        + '<div class="field"><label for="n-a">First portfolio</label>'
-        + '<input id="n-a" value="' + esc(state.books.screened.name) + '"></div>'
-        + '<div class="field"><label for="n-b">Second portfolio</label>'
-        + '<input id="n-b" value="' + esc(state.books.defence.name) + '"></div></div>';
+      h += '<div class="row2">';
+      bookKeys().forEach(function (k) {
+        h += '<div class="field"><label for="bn-' + k + '">'
+          + esc(RACE.indexOf(k) < 0 ? state.books[k].name + ' (outside the race)' : state.books[k].name)
+          + '</label><input id="bn-' + k + '" value="' + esc(state.books[k].name) + '"></div>';
+      });
+      h += '</div>';
       h += '<div class="btn-row"><button class="act" data-savekey="1">Save</button>'
         + '<button class="act ghost" data-backup="1">Back up or restore</button>'
         + '<button class="act ghost" data-hidekey="1">Close</button>'
@@ -986,7 +1078,7 @@
         + '<button class="act ghost" data-sel="missing">Missing only</button>'
         + '<button class="act ghost" data-sel="stale">Not today</button>'
         + '<button class="act ghost" data-sel="none">None</button></div>';
-      ['screened', 'defence'].forEach(function (k) {
+      bookKeys().forEach(function (k) {
         var b = state.books[k];
         if (!b.positions.length) return;
         h += '<div style="font-size:12px;color:' + b.color + ';margin:10px 0 4px">' + esc(b.name) + '</div>';
@@ -1037,7 +1129,13 @@
     out.push('Screened ' + money(s) + ' (' + pct((s - 500) / 5) + ')  |  Defence '
       + money(d) + ' (' + pct((d - 500) / 5) + ')');
 
-    ['screened', 'defence'].forEach(function (key) {
+    asideKeys().forEach(function (k) {
+      var b = state.books[k];
+      var v = bookValue(b);
+      out.push(b.name + ' ' + money(v) + ' (' + pct((v - 500) / 5) + ')  |  outside the race');
+    });
+
+    bookKeys().forEach(function (key) {
       var b = state.books[key];
       out.push('');
       out.push(b.name.toUpperCase());
@@ -1054,7 +1152,8 @@
       out.push('');
       out.push('TRADES');
       state.trades.slice(0, 8).forEach(function (t) {
-        out.push(niceDate(t.date) + ' ' + state.books[t.book].name + ': ' + t.action + ' '
+        out.push(niceDate(t.date) + ' '
+          + ((state.books[t.book] && state.books[t.book].name) || t.book) + ': ' + t.action + ' '
           + t.name + ' ' + money(t.amount) + (t.why ? ' — ' + t.why : ''));
       });
     }
@@ -1135,6 +1234,7 @@
       if (!state.history) state.history = [];
       if (!state.prior) state.prior = [];
       if (!state.avUsage) state.avUsage = { date: '', n: 0 };
+      ensureBooks();
       remoteNewer = null; error = null;
       syncNote = 'Pulled from the other device.';
       await store.set(KEY, JSON.stringify(state));
@@ -1333,11 +1433,16 @@
     common = common.slice(-30);
     if (common.length < 2) return;
 
-    var rows = common.map(function (d) { return { date: d, s: 0, d: 0 }; });
+    var rows = common.map(function (d) { return { date: d }; });
 
-    ['screened', 'defence'].forEach(function (key) {
-      var slot = key === 'screened' ? 's' : 'd';
-      state.books[key].positions.forEach(function (p) {
+    bookKeys().forEach(function (key) {
+      var b = state.books[key];
+      // A book with nothing in it has no shape to rebase, so it is left off the
+      // context section rather than drawn as a flat line at zero.
+      if (!b.positions.length) return;
+      var slot = slotOf(key);
+      for (var r = 0; r < rows.length; r++) rows[r][slot] = b.cash;
+      b.positions.forEach(function (p) {
         var m = closes[p.id];
         var last = m ? m[common[common.length - 1]] : null;
         for (var w = 0; w < common.length; w++) {
@@ -1455,7 +1560,8 @@
 
   function snapshot() {
     var d = today();
-    var pt = { date: d, s: bookValue(state.books.screened), d: bookValue(state.books.defence) };
+    var pt = { date: d };
+    bookKeys().forEach(function (k) { pt[slotOf(k)] = bookValue(state.books[k]); });
     var i = state.history.findIndex(function (x) { return x.date === d; });
     if (i >= 0) state.history[i] = pt; else state.history.push(pt);
   }
@@ -1484,15 +1590,18 @@
     }
 
     var rows = [
-      { date: weekDate(4), s: 0, d: 0 },
-      { date: weekDate(2), s: 0, d: 0 },
-      { date: state.start, s: 0, d: 0 }
+      { date: weekDate(4) },
+      { date: weekDate(2) },
+      { date: state.start }
     ];
     var covered = 0;
 
-    ['screened', 'defence'].forEach(function (key) {
-      var slot = key === 'screened' ? 's' : 'd';
-      state.books[key].positions.forEach(function (p) {
+    bookKeys().forEach(function (key) {
+      var b = state.books[key];
+      if (!b.positions.length) return;
+      var slot = slotOf(key);
+      for (var r = 0; r < rows.length; r++) rows[r][slot] = b.cash;
+      b.positions.forEach(function (p) {
         var arr = series[p.ticker];
         var ok = Array.isArray(arr) && arr.length === 3 && arr.every(function (n) {
           return typeof n === 'number' && isFinite(n) && n > 0;
@@ -1532,30 +1641,52 @@
     var live = state.history || [];
     var all = prior.concat(live);
 
-    if (all.length < 2) {
-      return '<div class="chart"><div class="empty" style="border:none;padding:18px 8px">'
-        + 'Nothing to plot yet. Add last month for context, or update prices twice to start the line.'
-        + '</div></div>';
-    }
+    var nothing = '<div class="chart"><div class="empty" style="border:none;padding:18px 8px">'
+      + 'Nothing to plot yet. Add last month for context, or update prices twice to start the line.'
+      + '</div></div>';
+
+    if (all.length < 2) return nothing;
+
+    /* One line per book. A book that joined part way through only has values on
+       the later rows, so each line records where it starts and ends rather than
+       assuming it spans the whole series. Fewer than two points and it is left
+       off entirely — a single dot is not a line. */
+    var lines = [];
+    bookKeys().forEach(function (k) {
+      var slot = slotOf(k);
+      var at = [];
+      for (var i = 0; i < all.length; i++) {
+        if (typeof all[i][slot] === 'number' && isFinite(all[i][slot])) at.push(i);
+      }
+      if (at.length < 2) return;
+      lines.push({
+        slot: slot, colour: state.books[k].color, name: state.books[k].name,
+        first: at[0], last: at[at.length - 1]
+      });
+    });
+    if (!lines.length) return nothing;
 
     var vals = [];
-    all.forEach(function (p) { vals.push(p.s, p.d); });
+    all.forEach(function (p) {
+      lines.forEach(function (ln) {
+        if (typeof p[ln.slot] === 'number' && isFinite(p[ln.slot])) vals.push(p[ln.slot]);
+      });
+    });
     var lo = Math.min.apply(null, vals), hi = Math.max.apply(null, vals);
     var pad = Math.max(10, (hi - lo) * 0.15);
     lo -= pad; hi += pad;
     var W = 300, H = 130;
 
-    function xy(p, i) {
-      var x = (i / (all.length - 1)) * W;
-      var y = H - ((p[key] - lo) / (hi - lo)) * H;
-      return x.toFixed(1) + ',' + y.toFixed(1);
-    }
-    var key;
+    function xOf(i) { return (i / (all.length - 1)) * W; }
+    function yOf(v) { return H - ((v - lo) / (hi - lo)) * H; }
 
-    function seg(k, from, to, colour, dashed) {
-      key = k;
+    function seg(slot, from, to, colour, dashed) {
       var pts = [];
-      for (var i = from; i <= to && i < all.length; i++) pts.push(xy(all[i], i));
+      for (var i = from; i <= to && i < all.length; i++) {
+        var v = all[i][slot];
+        if (typeof v !== 'number' || !isFinite(v)) continue;
+        pts.push(xOf(i).toFixed(1) + ',' + yOf(v).toFixed(1));
+      }
       if (pts.length < 2) return '';
       return '<polyline points="' + pts.join(' ') + '" fill="none" stroke="' + colour + '" stroke-width="2" '
         + 'stroke-linejoin="round" stroke-linecap="round" vector-effect="non-scaling-stroke"'
@@ -1563,49 +1694,64 @@
     }
 
     var split = prior.length ? prior.length - 1 : 0;
-    var baseY = H - ((500 - lo) / (hi - lo)) * H;
+    var baseY = yOf(500);
 
-    // labels sit at the left end, where the two lines are apart; the right end
-    // always converges on the start value because the series is rebased there
+    /* Label each line where it begins. For the original pair that is the left
+       end, where they are furthest apart; for a book that joins later it sits
+       above the point its line actually starts from. */
     function labelTop(v) {
-      var t = (1 - (v - lo) / (hi - lo)) * 130;
-      return Math.max(0, Math.min(116, t - 8));
+      var t = (1 - (v - lo) / (hi - lo)) * H;
+      return Math.max(0, Math.min(H - 14, t - 8));
     }
-    var tS = labelTop(all[0].s), tD = labelTop(all[0].d);
-    if (Math.abs(tS - tD) < 16) {
-      if (tS <= tD) { tS = Math.max(0, tS - 8); tD = Math.min(116, tD + 8); }
-      else { tD = Math.max(0, tD - 8); tS = Math.min(116, tS + 8); }
+    var tags = lines.map(function (ln) {
+      return {
+        name: ln.name, colour: ln.colour,
+        top: labelTop(all[ln.first][ln.slot]),
+        left: (ln.first / (all.length - 1)) * 100
+      };
+    });
+    for (var a = 0; a < tags.length; a++) {
+      for (var b = a + 1; b < tags.length; b++) {
+        if (Math.abs(tags[a].left - tags[b].left) > 6) continue;
+        if (Math.abs(tags[a].top - tags[b].top) >= 16) continue;
+        if (tags[a].top <= tags[b].top) {
+          tags[a].top = Math.max(0, tags[a].top - 8);
+          tags[b].top = Math.min(H - 14, tags[b].top + 8);
+        } else {
+          tags[b].top = Math.max(0, tags[b].top - 8);
+          tags[a].top = Math.min(H - 14, tags[a].top + 8);
+        }
+      }
     }
 
     var h = '<div class="chart"><div style="position:relative">';
-    h += '<span class="chart-tag" style="top:' + tS.toFixed(0) + 'px;color:var(--pine)">'
-      + esc(state.books.screened.name) + '</span>';
-    h += '<span class="chart-tag" style="top:' + tD.toFixed(0) + 'px;color:var(--brass)">'
-      + esc(state.books.defence.name) + '</span>';
+    tags.forEach(function (t) {
+      // A label near the right edge is anchored to the right so it stays on the card.
+      var right = t.left > 60;
+      h += '<span class="chart-tag' + (right ? ' right' : '') + '" style="top:' + t.top.toFixed(0) + 'px;'
+        + (right ? 'right:' + (100 - t.left).toFixed(1) + '%' : 'left:' + t.left.toFixed(1) + '%')
+        + ';color:' + t.colour + '">' + esc(t.name) + '</span>';
+    });
     h += '<svg viewBox="0 0 ' + W + ' ' + H + '" preserveAspectRatio="none" role="img" '
-      + 'aria-label="Both portfolios plotted over time against the 500 pound start line">';
+      + 'aria-label="Each portfolio plotted over time against the 500 pound start line">';
     if (baseY > 0 && baseY < H) {
       h += '<line x1="0" y1="' + baseY.toFixed(1) + '" x2="' + W + '" y2="' + baseY.toFixed(1)
          + '" stroke="var(--rule)" stroke-width="1" stroke-dasharray="3 3" vector-effect="non-scaling-stroke"/>';
     }
     if (prior.length && live.length) {
-      var sx = ((split) / (all.length - 1)) * W;
+      var sx = xOf(split);
       h += '<line x1="' + sx.toFixed(1) + '" y1="0" x2="' + sx.toFixed(1) + '" y2="' + H
          + '" stroke="var(--rule)" stroke-width="1" vector-effect="non-scaling-stroke"/>';
     }
-    if (prior.length > 1) {
-      h += seg('s', 0, split, 'var(--pine)', true);
-      h += seg('d', 0, split, 'var(--brass)', true);
-    }
-    if (live.length) {
-      h += seg('s', split, all.length - 1, 'var(--pine)', false);
-      h += seg('d', split, all.length - 1, 'var(--brass)', false);
-    }
+    lines.forEach(function (ln) {
+      if (prior.length > 1) h += seg(ln.slot, 0, split, ln.colour, true);
+      if (live.length) h += seg(ln.slot, split, all.length - 1, ln.colour, false);
+    });
     h += '</svg></div>';
 
     var cap = niceDate(all[0].date) + ' to ' + niceDate(state.dataAsOf || all[all.length - 1].date)
-      + ' \u00B7 dashed line is the \u00A3500 start';
-    if (prior.length) cap += ' \u00B7 faded section is before we bought, for context only';
+      + ' · dashed line is the £500 start';
+    if (prior.length) cap += ' · faded section is before we bought, for context only';
     h += '<div class="chart-cap">' + cap + '</div></div>';
     return h;
   }
@@ -1764,6 +1910,7 @@
         if (!state.history) state.history = [];
         if (!state.prior) state.prior = [];
         if (!state.avUsage) state.avUsage = { date: '', n: 0 };
+        ensureBooks();
         showBackup = false; showKey = false; error = null;
         fetchNote = 'Restored.';
         save(); render();
@@ -1773,13 +1920,13 @@
     root.querySelectorAll('[data-start]').forEach(function (el) {
       el.onclick = function () {
         if (el.dataset.start === 'empty') {
-          state.books.screened.positions = [];
-          state.books.defence.positions = [];
-          state.books.screened.cash = 500;
-          state.books.defence.cash = 500;
-          state.books.screened.name = 'First';
-          state.books.defence.name = 'Second';
-          fetchNote = 'Rename both in Settings, then add your picks.';
+          var labels = { screened: 'First', defence: 'Second' };
+          bookKeys().forEach(function (k, i) {
+            state.books[k].positions = [];
+            state.books[k].cash = 500;
+            state.books[k].name = labels[k] || ('Book ' + (i + 1));
+          });
+          fetchNote = 'Rename them in Settings, then add your picks.';
         }
         firstRun = false;
         save(); render();
@@ -2068,25 +2215,28 @@
         state.avKey = newKey;
         var st = document.getElementById('startTab');
         if (st) state.startTab = st.value;
-        var a = txt('n-a'), b = txt('n-b');
-        if (a) state.books.screened.name = a;
-        if (b) state.books.defence.name = b;
+        bookKeys().forEach(function (k) {
+          var nm = txt('bn-' + k);
+          if (nm) state.books[k].name = nm;
+        });
         showKey = false; fetchNote = null;
         save(); render();
       };
     });
     root.querySelectorAll('[data-reset]').forEach(function (el) {
       el.onclick = function () {
-        if (!window.confirm('Empty both portfolios to £500 cash each? Holdings, trades and history all go.')) return;
-        var keep = state.avKey, na = state.books.screened.name, nb = state.books.defence.name;
+        if (!window.confirm('Empty every portfolio to £500 cash each? Holdings, trades and history all go.')) return;
+        var keep = state.avKey;
+        var names = {};
+        bookKeys().forEach(function (k) { names[k] = state.books[k].name; });
         state = seed();
         state.avKey = keep;
-        state.books.screened.name = na;
-        state.books.defence.name = nb;
-        state.books.screened.positions = [];
-        state.books.defence.positions = [];
-        state.books.screened.cash = 500;
-        state.books.defence.cash = 500;
+        ensureBooks();
+        bookKeys().forEach(function (k) {
+          if (names[k]) state.books[k].name = names[k];
+          state.books[k].positions = [];
+          state.books[k].cash = 500;
+        });
         showKey = false;
         fetchNote = 'Cleared. Add your own picks, then hit Refresh data to fill in the prices.';
         save(); render();

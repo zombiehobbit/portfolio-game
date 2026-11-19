@@ -93,14 +93,14 @@ export async function onRequest(context) {
         })
       };
     };
+    const books = {};
+    for (const key of Object.keys((d && d.books) || {})) {
+      const book = strip(d.books[key]);
+      if (book) books[key] = book;
+    }
     const shared = {
       updated: parsed.updated || Date.now(),
-      data: {
-        books: {
-          screened: strip(d.books && d.books.screened),
-          defence: strip(d.books && d.books.defence)
-        }
-      }
+      data: { books }
     };
     await env.STATE.put('view:' + vc, JSON.stringify(shared));
 
